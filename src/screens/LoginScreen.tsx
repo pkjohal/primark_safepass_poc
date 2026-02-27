@@ -60,7 +60,7 @@ export default function LoginScreen() {
 
         {/* Branding */}
         <div className="text-center mb-8">
-          <p className="text-primark-blue font-bold uppercase tracking-[0.15em] leading-none" style={{ fontSize: '42px' }}>PRIMARK</p>
+          <p className="font-primark uppercase text-primark-blue leading-none" style={{ fontSize: '42px' }}>PRIMARK</p>
           <p className="text-white/70 text-sm mt-1">SafePass — Visitor Access Management</p>
         </div>
 

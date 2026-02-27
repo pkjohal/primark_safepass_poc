@@ -86,102 +86,89 @@ export default function HomeScreen() {
         />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
-        {/* Expected visitors */}
-        <div className="xl:col-span-3">
-          <div className="bg-white rounded-xl shadow-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-navy">Expected Today</h2>
-              {isReception && !activeEvacuation && (
-                <button
-                  onClick={() => navigate('/visitors/new?walkin=true')}
-                  className="flex items-center gap-1.5 bg-primark-blue text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primark-blue-dark transition-colors min-h-btn"
-                >
-                  + Walk-In
-                </button>
-              )}
-            </div>
-
-            <SearchBar
-              placeholder="Search visitors, company..."
-              onSearch={setSearch}
-              className="mb-4"
-            />
-
-            {loading ? (
-              <div className="space-y-3">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="h-12 skeleton rounded-lg" />
-                ))}
-              </div>
-            ) : filteredScheduled.length === 0 ? (
-              <EmptyState
-                icon="📋"
-                title="No visitors expected"
-                message={search ? 'No visitors match your search' : 'No scheduled visitors for today'}
-                action={isReception && !activeEvacuation ? { label: 'Register Walk-In', onClick: () => navigate('/visitors/new?walkin=true') } : undefined}
-              />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-left">
-                      <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Time</th>
-                      <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Visitor</th>
-                      <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Type</th>
-                      <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden md:table-cell">Host</th>
-                      <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden lg:table-cell">Purpose</th>
-                      <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Pre-Arrival</th>
-                      <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredScheduled.map((visit) => (
-                      <VisitorRow
-                        key={visit.id}
-                        visit={visit}
-                        onClick={isReception ? () => navigate(`/checkin/${visit.id}`) : undefined}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+      {/* Expected visitors — full width */}
+      <div className="bg-white rounded-xl shadow-card p-5 mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-navy">Expected Today</h2>
+          {isReception && !activeEvacuation && (
+            <button
+              onClick={() => navigate('/visitors/new?walkin=true')}
+              className="flex items-center gap-1.5 bg-primark-blue text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primark-blue-dark transition-colors min-h-btn"
+            >
+              + Walk-In
+            </button>
+          )}
         </div>
 
-        {/* Live status board (reception + admin only) */}
-        {isReception && (
-          <div className="xl:col-span-2 space-y-4">
-            {/* Awaiting escort */}
-            {awaitingEscort.length > 0 && (
-              <StatusSection
-                title="Awaiting Escort"
-                colour="amber"
-                visits={awaitingEscort}
-                onAction={(v) => navigate(`/checkin/${v.id}`)}
-              />
-            )}
+        <SearchBar
+          placeholder="Search visitors, company..."
+          onSearch={setSearch}
+          className="mb-4"
+        />
 
-            {/* Overdue */}
-            {overdueVisits.length > 0 && (
-              <StatusSection
-                title="Overdue"
-                colour="red"
-                visits={overdueVisits}
-                onAction={(v) => navigate(`/checkin/${v.id}`)}
-              />
-            )}
-
-            {/* Currently on-site */}
-            <StatusSection
-              title="On-Site — Unescorted"
-              colour="green"
-              visits={unescortedVisits}
-            />
+        {loading ? (
+          <div className="space-y-3">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-12 skeleton rounded-lg" />
+            ))}
+          </div>
+        ) : filteredScheduled.length === 0 ? (
+          <EmptyState
+            icon="📋"
+            title="No visitors expected"
+            message={search ? 'No visitors match your search' : 'No scheduled visitors for today'}
+            action={isReception && !activeEvacuation ? { label: 'Register Walk-In', onClick: () => navigate('/visitors/new?walkin=true') } : undefined}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="text-left">
+                  <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Time</th>
+                  <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Visitor</th>
+                  <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Type</th>
+                  <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden md:table-cell">Host</th>
+                  <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden lg:table-cell">Purpose</th>
+                  <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Pre-Arrival</th>
+                  <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredScheduled.map((visit) => (
+                  <VisitorRow
+                    key={visit.id}
+                    visit={visit}
+                    onClick={isReception ? () => navigate(`/checkin/${visit.id}`) : undefined}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
+
+      {/* Live status board (reception + admin only) */}
+      {isReception && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <StatusSection
+            title="Awaiting Escort"
+            colour="amber"
+            visits={awaitingEscort}
+            onAction={(v) => navigate(`/checkin/${v.id}`)}
+          />
+          <StatusSection
+            title="Overdue"
+            colour="red"
+            visits={overdueVisits}
+            onAction={(v) => navigate(`/checkin/${v.id}`)}
+          />
+          <StatusSection
+            title="On-Site — Unescorted"
+            colour="green"
+            visits={unescortedVisits}
+          />
+        </div>
+      )}
 
       {/* Evacuation confirmation */}
       {showEvacConfirm && (

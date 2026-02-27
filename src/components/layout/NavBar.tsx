@@ -16,7 +16,7 @@ export default function NavBar() {
 
       {/* Branding */}
       <div className="flex items-baseline gap-2">
-        <span className="font-bold uppercase text-primark-blue" style={{ fontSize: '24px', fontWeight: 500 }}>PRIMARK</span>
+        <span className="font-primark uppercase text-primark-blue" style={{ fontSize: '24px' }}>PRIMARK</span>
         <span className="text-mid-grey text-sm">SafePass</span>
       </div>
 

@@ -51,7 +51,7 @@ export function useEvacuation() {
       .select(`
         *,
         visitor:visitors(*),
-        host:users!visits_host_user_id_fkey(id,name,username,email,site_id,role,is_active,created_at,updated_at)
+        host:members!visits_host_user_id_fkey(id,name,username,email,site_id,role,is_active,created_at,updated_at)
       `)
       .eq('site_id', siteId)
       .eq('status', 'checked_in')
