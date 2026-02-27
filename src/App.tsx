@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -5,7 +6,7 @@ import { hasMinRole } from './lib/permissions'
 
 // Layout
 import NavBar from './components/layout/NavBar'
-import BottomNav from './components/layout/BottomNav'
+import Sidebar from './components/layout/Sidebar'
 import EvacuationBanner from './components/layout/EvacuationBanner'
 
 // Screens
@@ -23,10 +24,12 @@ import DenyListScreen from './screens/DenyListScreen'
 import SiteConfigScreen from './screens/SiteConfigScreen'
 import EvacuationScreen from './screens/EvacuationScreen'
 import AdminScreen from './screens/AdminScreen'
+import UpcomingVisitsScreen from './screens/UpcomingVisitsScreen'
 
 function ProtectedLayout() {
   const { user, activeEvacuation } = useAuth()
   const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />
@@ -34,12 +37,14 @@ function ProtectedLayout() {
 
   return (
     <div className="min-h-screen bg-light-grey flex flex-col">
-      <NavBar />
+      <NavBar onMenuToggle={() => setSidebarOpen((o) => !o)} />
       {activeEvacuation && <EvacuationBanner event={activeEvacuation} />}
-      <main className="flex-1 overflow-auto">
-        <Outlet />
-      </main>
-      <BottomNav />
+      <div className="flex flex-1 overflow-hidden">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <main className="flex-1 overflow-auto">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }
@@ -68,6 +73,7 @@ function AppRoutes() {
         <Route path="/visitors" element={<VisitorSearchScreen />} />
         <Route path="/visitors/new" element={<VisitorFormScreen />} />
         <Route path="/visitors/:id" element={<VisitorProfileScreen />} />
+        <Route path="/upcoming" element={<UpcomingVisitsScreen />} />
         <Route path="/schedule" element={<ScheduleVisitScreen />} />
         <Route
           path="/checkin/:visitId"

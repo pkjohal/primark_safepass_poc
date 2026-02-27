@@ -106,5 +106,24 @@ export function useVisits() {
     if (error) throw error
   }, [])
 
-  return { todaysVisits, checkedInVisits, loading, fetchVisits, getVisitById, getVisitsForVisitor, createVisit, updateVisit }
+  const getUpcomingVisits = useCallback(async (): Promise<VisitWithVisitor[]> => {
+    if (!site) return []
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    tomorrow.setHours(0, 0, 0, 0)
+    const { data } = await supabase
+      .from('visits')
+      .select(`
+        *,
+        visitor:visitors(*),
+        host:members!visits_host_user_id_fkey(id,name,username,email,site_id,role,is_active,created_at,updated_at)
+      `)
+      .eq('site_id', site.id)
+      .gte('planned_arrival', tomorrow.toISOString())
+      .eq('status', 'scheduled')
+      .order('planned_arrival')
+    return (data as VisitWithVisitor[]) ?? []
+  }, [site])
+
+  return { todaysVisits, checkedInVisits, loading, fetchVisits, getVisitById, getVisitsForVisitor, createVisit, updateVisit, getUpcomingVisits }
 }

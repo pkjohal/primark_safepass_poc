@@ -5,6 +5,7 @@ import StatusPill from '../ui/StatusPill'
 interface Props {
   visit: VisitWithVisitor
   onClick?: () => void
+  onCheckIn?: () => void
 }
 
 function PreArrivalIcon({ done }: { done: boolean }) {
@@ -15,7 +16,7 @@ function PreArrivalIcon({ done }: { done: boolean }) {
   )
 }
 
-export default function VisitorRow({ visit, onClick }: Props) {
+export default function VisitorRow({ visit, onClick, onCheckIn }: Props) {
   const displayStatus = getDisplayStatus(visit)
   const hasDocuments = visit.documents_accepted !== undefined
 
@@ -68,6 +69,16 @@ export default function VisitorRow({ visit, onClick }: Props) {
           }
         />
       </td>
+      {onCheckIn && (
+        <td className="py-3 px-4">
+          <button
+            onClick={(e) => { e.stopPropagation(); onCheckIn() }}
+            className="px-3 py-1.5 bg-primark-blue text-white text-xs font-semibold rounded-lg hover:bg-primark-blue-dark transition-colors whitespace-nowrap"
+          >
+            Check In
+          </button>
+        </td>
+      )}
     </tr>
   )
 }

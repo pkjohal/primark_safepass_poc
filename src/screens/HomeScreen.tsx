@@ -6,6 +6,7 @@ import { useEscalation } from '../hooks/useEscalation'
 import { getDisplayStatus, formatDate } from '../lib/utils'
 import StatCard from '../components/ui/StatCard'
 import VisitorRow from '../components/visitors/VisitorRow'
+import CheckInModal from '../components/visits/CheckInModal'
 import SearchBar from '../components/ui/SearchBar'
 import EmptyState from '../components/ui/EmptyState'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
@@ -17,6 +18,7 @@ export default function HomeScreen() {
   const { todaysVisits, checkedInVisits, loading } = useVisits()
   const [search, setSearch] = useState('')
   const [showEvacConfirm, setShowEvacConfirm] = useState(false)
+  const [checkInVisitId, setCheckInVisitId] = useState<string | null>(null)
 
   // Escalation polling — only for reception/site_admin
   useEscalation(site, user?.id ?? null, isReception)
@@ -131,6 +133,7 @@ export default function HomeScreen() {
                   <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden lg:table-cell">Purpose</th>
                   <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Pre-Arrival</th>
                   <th className="py-2 px-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
+                  {isReception && <th className="py-2 px-4" />}
                 </tr>
               </thead>
               <tbody>
@@ -138,7 +141,7 @@ export default function HomeScreen() {
                   <VisitorRow
                     key={visit.id}
                     visit={visit}
-                    onClick={isReception ? () => navigate(`/checkin/${visit.id}`) : undefined}
+                    onCheckIn={isReception && !activeEvacuation ? () => setCheckInVisitId(visit.id) : undefined}
                   />
                 ))}
               </tbody>
@@ -168,6 +171,14 @@ export default function HomeScreen() {
             visits={unescortedVisits}
           />
         </div>
+      )}
+
+      {/* Check-in modal */}
+      {checkInVisitId && (
+        <CheckInModal
+          visitId={checkInVisitId}
+          onClose={() => setCheckInVisitId(null)}
+        />
       )}
 
       {/* Evacuation confirmation */}

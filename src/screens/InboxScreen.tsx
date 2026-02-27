@@ -22,8 +22,9 @@ export default function InboxScreen() {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <PageHeader
-        title="Inbox"
+        title="Notifications"
         subtitle={unread > 0 ? `${unread} unread notification${unread > 1 ? 's' : ''}` : 'All caught up'}
+        backTo="/"
       />
 
       {loading ? (

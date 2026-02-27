@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import type { Visitor } from '../lib/types'
@@ -6,7 +6,21 @@ import type { Visitor } from '../lib/types'
 export function useVisitors() {
   const { site } = useAuth()
   const [visitors, setVisitors] = useState<Visitor[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true)
+    const { data } = await supabase
+      .from('visitors')
+      .select('*')
+      .eq('is_anonymised', false)
+      .order('name')
+      .limit(200)
+    setVisitors((data as Visitor[]) ?? [])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { fetchAll() }, [fetchAll])
 
   const search = useCallback(async (query: string) => {
     if (!site) return
@@ -81,5 +95,5 @@ export function useVisitors() {
     return (data as Visitor) ?? null
   }, [])
 
-  return { visitors, loading, search, getById, getByToken, createVisitor, updateVisitor, checkDuplicate }
+  return { visitors, loading, search, fetchAll, getById, getByToken, createVisitor, updateVisitor, checkDuplicate }
 }

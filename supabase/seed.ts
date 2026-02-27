@@ -79,7 +79,7 @@ async function seed() {
       address: '47 Mary Street, Dublin 1',
       region: 'Ireland',
       hs_content_version: 1,
-      hs_video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+      hs_video_url: 'https://www.youtube.com/embed/UGJ4-sR27I0',
       hs_written_content: `## Welcome to Primark Dublin Mary Street
 
 Please read the following health and safety information carefully before your visit.

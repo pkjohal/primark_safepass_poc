@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useVisitors } from '../hooks/useVisitors'
 import { useAuth } from '../context/AuthContext'
@@ -10,23 +10,25 @@ import type { Visitor } from '../lib/types'
 export default function VisitorSearchScreen() {
   const navigate = useNavigate()
   const { isReception } = useAuth()
-  const { visitors, loading, search } = useVisitors()
-  const [hasSearched, setHasSearched] = useState(false)
+  const { visitors, loading } = useVisitors()
+  const [query, setQuery] = useState('')
 
-  const handleSearch = useCallback((q: string) => {
-    if (q.trim()) {
-      setHasSearched(true)
-      search(q)
-    } else {
-      setHasSearched(false)
-    }
-  }, [search])
+  const filtered = query.trim()
+    ? visitors.filter((v) => {
+        const q = query.toLowerCase()
+        return (
+          v.name.toLowerCase().includes(q) ||
+          v.email.toLowerCase().includes(q) ||
+          (v.company ?? '').toLowerCase().includes(q)
+        )
+      })
+    : visitors
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <PageHeader
         title="Visitors"
-        subtitle="Search for existing visitor profiles"
+        subtitle={loading ? 'Loading...' : `${visitors.length} visitor${visitors.length !== 1 ? 's' : ''}`}
         actions={
           isReception ? (
             <button
@@ -42,36 +44,24 @@ export default function VisitorSearchScreen() {
       <div className="bg-white rounded-xl shadow-card p-5">
         <SearchBar
           placeholder="Search by name, email, or company..."
-          onSearch={handleSearch}
+          onSearch={setQuery}
           className="mb-5"
         />
 
-        {!hasSearched && (
-          <EmptyState
-            icon="🔍"
-            title="Search for a visitor"
-            message="Enter a name, email address, or company to find existing visitor profiles."
-          />
-        )}
-
-        {hasSearched && loading && (
+        {loading ? (
           <div className="space-y-3">
-            {[...Array(4)].map((_, i) => <div key={i} className="h-16 skeleton rounded-lg" />)}
+            {[...Array(6)].map((_, i) => <div key={i} className="h-16 skeleton rounded-lg" />)}
           </div>
-        )}
-
-        {hasSearched && !loading && visitors.length === 0 && (
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon="👤"
-            title="No visitors found"
-            message="No matching visitor profiles. You can create a new one."
+            title={query ? 'No visitors found' : 'No visitors yet'}
+            message={query ? 'No visitor profiles match your search.' : 'No visitor profiles have been created yet.'}
             action={isReception ? { label: 'Create New Visitor', onClick: () => navigate('/visitors/new') } : undefined}
           />
-        )}
-
-        {hasSearched && !loading && visitors.length > 0 && (
+        ) : (
           <div className="divide-y divide-border-grey">
-            {visitors.map((v) => (
+            {filtered.map((v) => (
               <VisitorListItem
                 key={v.id}
                 visitor={v}
