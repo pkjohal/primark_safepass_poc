@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   Link2Off, ClipboardCheck, FileText, LogIn, LogOut,
-  MapPin, Calendar, Bell, Lock,
+  Calendar, Bell, Lock, Check, Clock,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useVisitors } from '../hooks/useVisitors'
@@ -82,6 +82,7 @@ export default function SelfServiceScreen() {
         // Find pending documents across upcoming visits
         const upcomingVisitIds = vs.filter((vv) => vv.status === 'scheduled').map((vv) => vv.id)
         if (upcomingVisitIds.length > 0) {
+          setPendingVisitId(upcomingVisitIds[0])
           const { data: docs } = await supabase
             .from('visit_documents')
             .select('*')
@@ -89,7 +90,6 @@ export default function SelfServiceScreen() {
             .eq('accepted', false)
           const pendingDocs = (docs as VisitDocument[]) ?? []
           setPendingDocuments(pendingDocs)
-          if (pendingDocs.length > 0) setPendingVisitId(upcomingVisitIds[0])
         }
       }
 
@@ -220,7 +220,13 @@ export default function SelfServiceScreen() {
 
   const todayVisit = visits.find((v) => v.status === 'scheduled' && isToday(v.planned_arrival))
   const checkedInVisit = visits.find((v) => v.status === 'checked_in')
-  const upcomingVisits = visits.filter((v) => v.status === 'scheduled')
+  const now = new Date()
+  const upcomingVisits = visits.filter((v) => v.status === 'scheduled' && new Date(v.planned_arrival) >= now)
+  const pastVisits = visits.filter((v) =>
+    v.status === 'departed' ||
+    v.status === 'cancelled' ||
+    (v.status === 'scheduled' && new Date(v.planned_arrival) < now)
+  )
   const unreadCount = notifications.filter((n) => !n.is_read).length
 
   return (
@@ -299,7 +305,7 @@ export default function SelfServiceScreen() {
             </div>
 
             {/* Pending actions */}
-            {(inductionRequired || pendingDocuments.length > 0 || (todayVisit && visitor.visitor_type === 'internal_staff') || checkedInVisit) && (
+            {(inductionRequired || pendingDocuments.length > 0 || (todayVisit && visitor.visitor_type === 'internal_staff' && !checkedInVisit)) && (
               <div className="bg-white rounded-xl shadow-card p-5">
                 <h2 className="text-base font-semibold text-navy mb-4">Actions Required</h2>
                 <div className="space-y-3">
@@ -331,19 +337,107 @@ export default function SelfServiceScreen() {
                       loading={checkingIn}
                     />
                   )}
-                  {checkedInVisit && (
-                    <ActionButton
-                      icon={<LogOut className="w-6 h-6" />}
-                      label="Sign Out"
-                      description={`Currently checked in · Since ${formatDate(checkedInVisit.actual_arrival, 'time-only')}`}
-                      colour="green"
-                      onClick={handleSignOut}
-                      loading={signingOut}
-                    />
-                  )}
                 </div>
               </div>
             )}
+
+            {/* ── Active visit ── */}
+            {checkedInVisit && (
+              <ActiveVisitCard visit={checkedInVisit} site={site} onSignOut={handleSignOut} signingOut={signingOut} />
+            )}
+
+            {/* ── Upcoming visits ── */}
+            <div className="bg-white rounded-xl shadow-card overflow-hidden">
+              <div className="px-5 py-4 border-b border-border-grey flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-mid-grey" />
+                <h2 className="text-base font-semibold text-navy">Upcoming Visits</h2>
+              </div>
+              {upcomingVisits.length === 0 ? (
+                <div className="p-6 text-center text-sm text-mid-grey">No upcoming visits scheduled.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-light-grey text-left">
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Date & Time</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Purpose</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Host</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">H&S</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Docs</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {upcomingVisits.map((v) => (
+                        <tr key={v.id} className="border-t border-border-grey">
+                          <td className="px-5 py-3 whitespace-nowrap">
+                            <div className="text-xs font-semibold text-navy">{formatDate(v.planned_arrival, 'date-only')}</div>
+                            <div className="text-xs text-mid-grey">{formatDate(v.planned_arrival, 'time-only')} – {formatDate(v.planned_departure, 'time-only')}</div>
+                          </td>
+                          <td className="px-5 py-3 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
+                          <td className="px-5 py-3 text-charcoal hidden sm:table-cell">{v.host.name}</td>
+                          <td className="px-5 py-3">
+                            {v.induction_completed || !inductionRequired
+                              ? <Check className="w-4 h-4 text-success" />
+                              : <button onClick={() => setActiveView('induction')} className="text-xs font-semibold text-warning underline">Required</button>
+                            }
+                          </td>
+                          <td className="px-5 py-3 hidden sm:table-cell">
+                            {pendingDocuments.length === 0
+                              ? <Check className="w-4 h-4 text-success" />
+                              : <button onClick={() => setActiveView('documents')} className="text-xs font-semibold text-warning underline">Review</button>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* ── Past visits ── */}
+            <div className="bg-white rounded-xl shadow-card overflow-hidden">
+              <div className="px-5 py-4 border-b border-border-grey flex items-center gap-2">
+                <Clock className="w-4 h-4 text-mid-grey" />
+                <h2 className="text-base font-semibold text-navy">Past Visits</h2>
+              </div>
+              {pastVisits.length === 0 ? (
+                <div className="p-6 text-center text-sm text-mid-grey">No past visits on record.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-light-grey text-left">
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Date</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Purpose</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Host</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pastVisits.map((v) => (
+                        <tr key={v.id} className="border-t border-border-grey">
+                          <td className="px-5 py-3 text-charcoal whitespace-nowrap">{formatDate(v.planned_arrival, 'date-only')}</td>
+                          <td className="px-5 py-3 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
+                          <td className="px-5 py-3 text-charcoal hidden sm:table-cell">{v.host.name}</td>
+                          <td className="px-5 py-3">
+                            {v.status === 'departed' && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-success-bg text-success">Attended</span>
+                            )}
+                            {v.status === 'cancelled' && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-light-grey text-mid-grey">Cancelled</span>
+                            )}
+                            {v.status === 'scheduled' && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-warning-bg text-warning">Missed</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
             {/* H&S Induction status card */}
             {site && (
@@ -354,92 +448,6 @@ export default function SelfServiceScreen() {
                 latestRecord={latestInductionRecord}
                 onStartInduction={() => setActiveView('induction')}
               />
-            )}
-
-            {/* Upcoming visit checklist cards */}
-            {upcomingVisits.slice(0, 5).map((v) => (
-              <div key={v.id} className="bg-white rounded-xl shadow-card overflow-hidden">
-                <div className="bg-navy px-5 py-4">
-                  <div className="text-white font-semibold text-sm">{v.purpose}</div>
-                  <div className="text-primark-blue text-xs mt-1 font-medium">
-                    {formatDate(v.planned_arrival, 'absolute')} — {formatDate(v.planned_departure, 'time-only')}
-                  </div>
-                </div>
-
-                <div className="p-5 space-y-4">
-                  {site && (
-                    <div className="flex items-start gap-3">
-                      <MapPin className="w-5 h-5 text-mid-grey shrink-0 mt-0.5" />
-                      <div>
-                        <div className="text-sm font-semibold text-navy">{site.name}</div>
-                        {site.address && <div className="text-xs text-mid-grey mt-0.5">{site.address}</div>}
-                        <div className="text-xs text-mid-grey">Host: {v.host.name}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="border-t border-border-grey pt-4 space-y-3">
-                    <p className="text-xs font-semibold text-mid-grey uppercase tracking-wide">Pre-Arrival Checklist</p>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                          v.induction_completed ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'
-                        }`}>
-                          {v.induction_completed ? '✓' : '!'}
-                        </span>
-                        <span className="text-sm text-charcoal">H&S Induction</span>
-                      </div>
-                      {v.induction_completed ? (
-                        <span className="text-xs text-success font-medium">Complete</span>
-                      ) : (
-                        <button
-                          onClick={() => setActiveView('induction')}
-                          className="text-xs font-semibold text-white bg-warning px-3 py-1.5 rounded-lg"
-                        >
-                          Complete Now
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                          pendingDocuments.length === 0 ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'
-                        }`}>
-                          {pendingDocuments.length === 0 ? '✓' : '!'}
-                        </span>
-                        <span className="text-sm text-charcoal">Documents</span>
-                      </div>
-                      {pendingDocuments.length === 0 ? (
-                        <span className="text-xs text-success font-medium">
-                          {v.documents_accepted ? 'Accepted' : 'None required'}
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => setActiveView('documents')}
-                          className="text-xs font-semibold text-white bg-warning px-3 py-1.5 rounded-lg"
-                        >
-                          Review ({pendingDocuments.length})
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {/* No upcoming visits */}
-            {upcomingVisits.length === 0 && (
-              <div className="bg-white rounded-xl shadow-card p-6 flex items-center gap-4">
-                <div className="w-10 h-10 rounded-full bg-light-grey flex items-center justify-center shrink-0">
-                  <Calendar className="w-5 h-5 text-mid-grey" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-navy">No upcoming visits scheduled</p>
-                  <p className="text-xs text-mid-grey mt-0.5">When a visit is arranged by the Primark team, it will appear here along with any pre-arrival tasks.</p>
-                </div>
-              </div>
             )}
 
             {/* Nav buttons */}
@@ -644,6 +652,90 @@ function InductionStatusCard({
             </button>
           </>
         )}
+      </div>
+    </div>
+  )
+}
+
+function ActiveVisitCard({ visit, site, onSignOut, signingOut }: { visit: VisitWithVisitor; site: Site | null; onSignOut: () => void; signingOut: boolean }) {
+  const now = Date.now()
+  const start = visit.actual_arrival ? new Date(visit.actual_arrival).getTime() : new Date(visit.planned_arrival).getTime()
+  const end = new Date(visit.planned_departure).getTime()
+  const total = end - start
+  const elapsed = now - start
+  const progress = total > 0 ? Math.min(100, Math.max(0, (elapsed / total) * 100)) : 0
+  const msRemaining = end - now
+  const isOverdue = msRemaining < 0
+
+  function formatRemaining(ms: number) {
+    const abs = Math.abs(ms)
+    const h = Math.floor(abs / 3_600_000)
+    const m = Math.floor((abs % 3_600_000) / 60_000)
+    if (h > 0) return `${h}h ${m}m`
+    return `${m}m`
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-card overflow-hidden border-l-4 border-success">
+      <div className="px-5 py-4 flex items-center justify-between border-b border-border-grey">
+        <div className="flex items-center gap-2">
+          <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
+          </span>
+          <h3 className="text-sm font-semibold text-navy">Currently Checked In</h3>
+        </div>
+        <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${isOverdue ? 'bg-danger-bg text-danger' : 'bg-success-bg text-success'}`}>
+          {isOverdue ? `Overdue by ${formatRemaining(msRemaining)}` : `${formatRemaining(msRemaining)} remaining`}
+        </span>
+      </div>
+
+      <div className="px-5 py-4 space-y-3">
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-xs text-mid-grey uppercase tracking-wide mb-0.5">Purpose</p>
+            <p className="font-medium text-navy">{visit.purpose}</p>
+          </div>
+          <div>
+            <p className="text-xs text-mid-grey uppercase tracking-wide mb-0.5">Host</p>
+            <p className="font-medium text-navy">{visit.host.name}</p>
+          </div>
+          {site && (
+            <div>
+              <p className="text-xs text-mid-grey uppercase tracking-wide mb-0.5">Site</p>
+              <p className="font-medium text-navy">{site.name}</p>
+            </div>
+          )}
+          <div>
+            <p className="text-xs text-mid-grey uppercase tracking-wide mb-0.5">Checked in</p>
+            <p className="font-medium text-navy">
+              {visit.actual_arrival ? formatDate(visit.actual_arrival, 'time-only') : formatDate(visit.planned_arrival, 'time-only')}
+            </p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div>
+          <div className="flex justify-between text-xs text-mid-grey mb-1.5">
+            <span>{visit.actual_arrival ? formatDate(visit.actual_arrival, 'time-only') : formatDate(visit.planned_arrival, 'time-only')}</span>
+            <span>{formatDate(visit.planned_departure, 'time-only')}</span>
+          </div>
+          <div className="w-full bg-light-grey rounded-full h-2 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${isOverdue ? 'bg-danger' : 'bg-success'}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={onSignOut}
+          disabled={signingOut}
+          className="w-full mt-1 py-3 border-2 border-success bg-success-bg text-success rounded-xl font-semibold text-sm hover:bg-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          <LogOut className="w-4 h-4" />
+          {signingOut ? 'Signing out...' : 'Sign Out'}
+        </button>
       </div>
     </div>
   )

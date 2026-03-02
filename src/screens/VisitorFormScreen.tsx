@@ -63,7 +63,7 @@ export default function VisitorFormScreen() {
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       <PageHeader
         title={isWalkIn ? 'Register Walk-In Visitor' : 'New Visitor Profile'}
         subtitle="Create a new visitor profile"

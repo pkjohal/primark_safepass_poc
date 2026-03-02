@@ -41,7 +41,6 @@ const navSections: NavSection[] = [
       {
         to: '/schedule',
         label: 'Schedule Visit',
-        minRole: 'reception',
         icon: <CalendarPlus className="w-[18px] h-[18px]" />,
       },
       {

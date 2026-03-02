@@ -1,6 +1,6 @@
 import type { VisitDisplayStatus } from '../../lib/types'
 
-type PillVariant = VisitDisplayStatus | 'awaiting_escort' | 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked' | 'denied' | 'active'
+type PillVariant = VisitDisplayStatus | 'awaiting_escort' | 'escorted' | 'pending' | 'approved' | 'rejected' | 'expired' | 'revoked' | 'denied' | 'active'
 
 interface Props {
   status: PillVariant
@@ -11,6 +11,7 @@ const variantMap: Record<string, string> = {
   scheduled:       'bg-light-grey text-mid-grey',
   checked_in:      'bg-success-bg text-success',
   awaiting_escort: 'bg-warning-bg text-warning',
+  escorted:        'bg-primark-blue-light text-primark-blue',
   overdue:         'bg-danger-bg text-danger',
   departed:        'bg-primark-blue-light text-primark-blue',
   cancelled:       'bg-white text-mid-grey border border-border-grey',
@@ -27,6 +28,7 @@ const labelMap: Record<string, string> = {
   scheduled:       'Scheduled',
   checked_in:      'Active — Unescorted',
   awaiting_escort: 'Awaiting Escort',
+  escorted:        'On-Site — Escorted',
   overdue:         'Overdue',
   departed:        'Departed',
   cancelled:       'Cancelled',

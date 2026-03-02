@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ClipboardList } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useVisits } from '../hooks/useVisits'
 import { useEscalation } from '../hooks/useEscalation'
@@ -9,14 +8,13 @@ import StatCard from '../components/ui/StatCard'
 import VisitorRow from '../components/visitors/VisitorRow'
 import CheckInModal from '../components/visits/CheckInModal'
 import SearchBar from '../components/ui/SearchBar'
-import EmptyState from '../components/ui/EmptyState'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import type { VisitWithVisitor } from '../lib/types'
 
 export default function HomeScreen() {
   const navigate = useNavigate()
-  const { user, site, isReception, isSiteAdmin, activeEvacuation } = useAuth()
-  const { todaysVisits, checkedInVisits, loading } = useVisits()
+  const { user, site, isHost, isReception, isSiteAdmin, activeEvacuation } = useAuth()
+  const { todaysVisits, checkedInVisits, loading, updateVisit, fetchVisits } = useVisits()
   const [search, setSearch] = useState('')
   const [showEvacConfirm, setShowEvacConfirm] = useState(false)
   const [checkInVisitId, setCheckInVisitId] = useState<string | null>(null)
@@ -38,6 +36,17 @@ export default function HomeScreen() {
   })
 
   const unescortedVisits = checkedInVisits.filter((v) => v.access_status === 'unescorted')
+  const escortedVisits = checkedInVisits.filter((v) => v.access_status === 'escorted')
+
+  async function handleMarkEscorted(v: VisitWithVisitor) {
+    await updateVisit(v.id, { access_status: 'escorted' })
+    fetchVisits()
+  }
+
+  async function handleCheckOut(v: VisitWithVisitor) {
+    await updateVisit(v.id, { status: 'departed', actual_departure: new Date().toISOString() })
+    fetchVisits()
+  }
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -95,7 +104,7 @@ export default function HomeScreen() {
           <h2 className="text-lg font-semibold text-navy">Expected Today</h2>
           {isReception && !activeEvacuation && (
             <button
-              onClick={() => navigate('/visitors/new?walkin=true')}
+              onClick={() => navigate('/schedule?walkin=true')}
               className="flex items-center gap-1.5 bg-primark-blue text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primark-blue-dark transition-colors min-h-btn"
             >
               + Walk-In
@@ -103,26 +112,24 @@ export default function HomeScreen() {
           )}
         </div>
 
-        <SearchBar
-          placeholder="Search visitors, company..."
-          onSearch={setSearch}
-          className="mb-4"
-        />
-
         {loading ? (
           <div className="space-y-3">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="h-12 skeleton rounded-lg" />
             ))}
           </div>
-        ) : filteredScheduled.length === 0 ? (
-          <EmptyState
-            icon={<ClipboardList className="w-7 h-7 text-mid-grey" />}
-            title="No visitors expected"
-            message={search ? 'No visitors match your search' : 'No scheduled visitors for today'}
-            action={isReception && !activeEvacuation ? { label: 'Register Walk-In', onClick: () => navigate('/visitors/new?walkin=true') } : undefined}
-          />
+        ) : todaysVisits.length === 0 ? (
+          <p className="text-sm text-mid-grey">No visitors scheduled for today.</p>
         ) : (
+          <>
+            <SearchBar
+              placeholder="Search visitors, company..."
+              onSearch={setSearch}
+              className="mb-4"
+            />
+            {filteredScheduled.length === 0 ? (
+              <p className="text-sm text-mid-grey">No visitors match your search.</p>
+            ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -148,28 +155,42 @@ export default function HomeScreen() {
               </tbody>
             </table>
           </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Live status board (reception + admin only) */}
-      {isReception && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Live status board */}
+      {isHost && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatusSection
             title="Awaiting Escort"
             colour="amber"
             visits={awaitingEscort}
-            onAction={(v) => navigate(`/checkin/${v.id}`)}
+            onAction={isReception && !activeEvacuation ? (v) => navigate(`/checkin/${v.id}`) : undefined}
+            secondaryAction={isReception && !activeEvacuation ? {
+              label: 'Mark Escorted',
+              onAction: handleMarkEscorted,
+            } : undefined}
           />
           <StatusSection
-            title="Overdue"
-            colour="red"
-            visits={overdueVisits}
-            onAction={(v) => navigate(`/checkin/${v.id}`)}
+            title="On-Site — Escorted"
+            colour="blue"
+            visits={escortedVisits}
+            secondaryAction={isReception && !activeEvacuation ? { label: 'Check Out', onAction: handleCheckOut } : undefined}
           />
           <StatusSection
             title="On-Site — Unescorted"
             colour="green"
             visits={unescortedVisits}
+            secondaryAction={isReception && !activeEvacuation ? { label: 'Check Out', onAction: handleCheckOut } : undefined}
+          />
+          <StatusSection
+            title="Overdue"
+            colour="red"
+            visits={overdueVisits}
+            onAction={isReception ? (v) => navigate(`/checkin/${v.id}`) : undefined}
+            secondaryAction={isReception && !activeEvacuation ? { label: 'Check Out', onAction: handleCheckOut } : undefined}
           />
         </div>
       )}
@@ -178,7 +199,7 @@ export default function HomeScreen() {
       {checkInVisitId && (
         <CheckInModal
           visitId={checkInVisitId}
-          onClose={() => setCheckInVisitId(null)}
+          onClose={() => { setCheckInVisitId(null); fetchVisits() }}
         />
       )}
 
@@ -202,22 +223,26 @@ function StatusSection({
   colour,
   visits,
   onAction,
+  secondaryAction,
 }: {
   title: string
-  colour: 'green' | 'amber' | 'red'
+  colour: 'green' | 'amber' | 'red' | 'blue'
   visits: VisitWithVisitor[]
   onAction?: (v: VisitWithVisitor) => void
+  secondaryAction?: { label: string; onAction: (v: VisitWithVisitor) => void }
 }) {
   const borderColour = {
     green: 'border-success',
     amber: 'border-warning',
     red: 'border-danger',
+    blue: 'border-primark-blue',
   }[colour]
 
   const headerColour = {
     green: 'text-success',
     amber: 'text-warning',
     red: 'text-danger',
+    blue: 'text-primark-blue',
   }[colour]
 
   return (
@@ -232,16 +257,26 @@ function StatusSection({
           {visits.map((v) => (
             <div
               key={v.id}
-              className={`flex items-center justify-between p-2.5 rounded-lg bg-light-grey ${onAction ? 'cursor-pointer hover:bg-border-grey transition-colors' : ''}`}
+              className={`p-2.5 rounded-lg bg-light-grey ${onAction ? 'cursor-pointer hover:bg-border-grey transition-colors' : ''}`}
               onClick={() => onAction?.(v)}
             >
-              <div>
-                <div className="text-sm font-semibold text-navy">{v.visitor.name}</div>
-                <div className="text-xs text-mid-grey">
-                  {v.visitor.company} · Since {formatDate(v.actual_arrival, 'time-only')}
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-navy">{v.visitor.name}</div>
+                  <div className="text-xs text-mid-grey">
+                    {v.visitor.company} · Since {formatDate(v.actual_arrival, 'time-only')}
+                  </div>
                 </div>
+                <div className="text-xs text-mid-grey">{v.host.name}</div>
               </div>
-              <div className="text-xs text-mid-grey">{v.host.name}</div>
+              {secondaryAction && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); secondaryAction.onAction(v) }}
+                  className="mt-2 w-full text-xs font-semibold text-primark-blue border border-primark-blue rounded-lg py-1 hover:bg-primark-blue-light transition-colors"
+                >
+                  {secondaryAction.label}
+                </button>
+              )}
             </div>
           ))}
         </div>

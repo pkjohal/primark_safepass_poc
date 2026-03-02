@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Calendar, Check, X } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import { useVisits } from '../hooks/useVisits'
 import { useAuth } from '../context/AuthContext'
+import { INDUCTION_VALIDITY_DAYS } from '../lib/constants'
 import { formatDate } from '../lib/utils'
 import PageHeader from '../components/layout/PageHeader'
 import StatusPill from '../components/ui/StatusPill'
@@ -11,9 +13,10 @@ import type { VisitWithVisitor } from '../lib/types'
 
 export default function UpcomingVisitsScreen() {
   const navigate = useNavigate()
-  const { isReception } = useAuth()
+  const { isHost, site } = useAuth()
   const { getUpcomingVisits } = useVisits()
   const [visits, setVisits] = useState<VisitWithVisitor[]>([])
+  const [validInductions, setValidInductions] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,6 +25,23 @@ export default function UpcomingVisitsScreen() {
       setLoading(false)
     })
   }, [getUpcomingVisits])
+
+  useEffect(() => {
+    if (!site || visits.length === 0) return
+    const visitorIds = [...new Set(visits.map((v) => v.visitor.id))]
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - INDUCTION_VALIDITY_DAYS)
+    supabase
+      .from('induction_records')
+      .select('visitor_id')
+      .eq('site_id', site.id)
+      .eq('content_version', site.hs_content_version)
+      .gte('completed_at', cutoff.toISOString())
+      .in('visitor_id', visitorIds)
+      .then(({ data }) => {
+        setValidInductions(new Set((data ?? []).map((r: { visitor_id: string }) => r.visitor_id)))
+      })
+  }, [visits, site])
 
   // Group by date label
   const groups: { label: string; visits: VisitWithVisitor[] }[] = []
@@ -39,9 +59,8 @@ export default function UpcomingVisitsScreen() {
       <PageHeader
         title="Upcoming Visits"
         subtitle="Scheduled visits from tomorrow onwards"
-        backTo="/"
         actions={
-          isReception ? (
+          isHost ? (
             <button
               onClick={() => navigate('/schedule')}
               className="flex items-center gap-2 bg-primark-blue text-white px-4 py-2.5 rounded-xl text-sm font-semibold hover:bg-primark-blue-dark transition-colors"
@@ -68,7 +87,7 @@ export default function UpcomingVisitsScreen() {
           icon={<Calendar className="w-7 h-7 text-mid-grey" />}
           title="No upcoming visits"
           message="No visits are scheduled beyond today."
-          action={isReception ? { label: 'Schedule a Visit', onClick: () => navigate('/schedule') } : undefined}
+          action={isHost ? { label: 'Schedule a Visit', onClick: () => navigate('/schedule') } : undefined}
         />
       ) : (
         <div className="space-y-6">
@@ -113,12 +132,14 @@ export default function UpcomingVisitsScreen() {
 
                     {/* Pre-arrival */}
                     <div className="hidden lg:flex gap-2 text-xs shrink-0">
-                      <span className={visit.induction_completed ? 'text-success' : 'text-warning'}>
-                        H&S {visit.induction_completed
-                        ? <Check className="inline w-3.5 h-3.5" />
-                        : <X className="inline w-3.5 h-3.5" />
-                      }
-                      </span>
+                      {(() => {
+                        const inducted = visit.induction_completed || validInductions.has(visit.visitor.id)
+                        return (
+                          <span className={inducted ? 'text-success' : 'text-warning'}>
+                            H&S {inducted ? <Check className="inline w-3.5 h-3.5" /> : <X className="inline w-3.5 h-3.5" />}
+                          </span>
+                        )
+                      })()}
                     </div>
 
                     {/* Status */}

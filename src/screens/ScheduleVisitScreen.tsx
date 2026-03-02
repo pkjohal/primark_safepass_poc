@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useVisits } from '../hooks/useVisits'
 import { useVisitors } from '../hooks/useVisitors'
 import { useNotifications } from '../hooks/useNotifications'
 import { useAuditLog } from '../hooks/useAuditLog'
+import { useInduction } from '../hooks/useInduction'
 import { useAuth } from '../context/AuthContext'
 import PageHeader from '../components/layout/PageHeader'
-import SearchBar from '../components/ui/SearchBar'
 import DateTimePicker from '../components/ui/DateTimePicker'
 import type { Visitor, SafeUser } from '../lib/types'
 import toast from 'react-hot-toast'
@@ -24,18 +24,25 @@ export default function ScheduleVisitScreen() {
   const isWalkIn = params.get('walkin') === 'true'
 
   const { user, site } = useAuth()
-  const { createVisit } = useVisits()
-  const { getById, search, visitors } = useVisitors()
+  const { createVisit, updateVisit } = useVisits()
+  const { getById, visitors } = useVisitors()
   const { sendNotification } = useNotifications()
   const { log } = useAuditLog()
+  const { checkInductionValid } = useInduction()
 
   const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null)
-  const [visitorSearch, setVisitorSearch] = useState('')
   const [allUsers, setAllUsers] = useState<SafeUser[]>([])
   const [hostContactId, setHostContactId] = useState<string>(user?.id ?? '')
   const [backupContactId, setBackupContactId] = useState<string>('')
-  const [plannedArrival, setPlannedArrival] = useState('')
-  const [plannedDeparture, setPlannedDeparture] = useState('')
+  const toLocalDateTimeValue = (d: Date) => {
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  }
+  const walkInNow = isWalkIn ? toLocalDateTimeValue(new Date()) : ''
+  const walkInDeparture = isWalkIn ? toLocalDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)) : ''
+
+  const [plannedArrival, setPlannedArrival] = useState(walkInNow)
+  const [plannedDeparture, setPlannedDeparture] = useState(walkInDeparture)
   const [purpose, setPurpose] = useState('')
   const [documents, setDocuments] = useState<DocumentDraft[]>([])
   const [showDocForm, setShowDocForm] = useState(false)
@@ -43,6 +50,17 @@ export default function ScheduleVisitScreen() {
   const [newDocContent, setNewDocContent] = useState('')
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [checkedInVisitorIds, setCheckedInVisitorIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!site) return
+    supabase
+      .from('visits')
+      .select('visitor_id')
+      .eq('site_id', site.id)
+      .eq('status', 'checked_in')
+      .then(({ data }) => setCheckedInVisitorIds(new Set((data ?? []).map((r: { visitor_id: string }) => r.visitor_id))))
+  }, [site])
 
   useEffect(() => {
     if (preselectedVisitorId) {
@@ -60,11 +78,6 @@ export default function ScheduleVisitScreen() {
       .order('name')
       .then(({ data }) => setAllUsers((data as SafeUser[]) ?? []))
   }, [site])
-
-  const handleVisitorSearch = useCallback((q: string) => {
-    setVisitorSearch(q)
-    if (q) search(q)
-  }, [search])
 
   function addDocument() {
     if (!newDocName.trim() || !newDocContent.trim()) return
@@ -103,6 +116,16 @@ export default function ScheduleVisitScreen() {
         planned_departure: new Date(plannedDeparture).toISOString(),
         is_walk_in: isWalkIn,
       })
+
+      // If visitor already has a valid induction, mark it complete on this visit
+      const { valid: inductionValid, record: inductionRecord } = await checkInductionValid(selectedVisitor.id, site)
+      if (inductionValid && inductionRecord) {
+        await updateVisit(visit.id, {
+          induction_completed: true,
+          induction_completed_at: inductionRecord.completed_at,
+          induction_version: inductionRecord.content_version,
+        })
+      }
 
       // Insert host contacts
       const contacts = [{ visit_id: visit.id, user_id: hostId, is_backup: false }]
@@ -146,65 +169,45 @@ export default function ScheduleVisitScreen() {
   const now = new Date().toISOString().slice(0, 16)
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       <PageHeader
         title={isWalkIn ? 'Register Walk-In Visit' : 'Schedule Visit'}
         subtitle="Create a new visit for a visitor"
-        backTo="/"
       />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Visitor selection */}
         <div className="bg-white rounded-xl shadow-card p-5">
           <h2 className="text-base font-semibold text-navy mb-4">Visitor</h2>
-          {selectedVisitor ? (
-            <div className="flex items-center justify-between p-3 bg-primark-blue-light rounded-lg">
-              <div>
-                <div className="text-sm font-semibold text-navy">{selectedVisitor.name}</div>
-                <div className="text-xs text-mid-grey">{selectedVisitor.email} · {selectedVisitor.company}</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedVisitor(null)}
-                className="text-xs text-primark-blue hover:underline"
-              >
-                Change
-              </button>
-            </div>
-          ) : (
-            <div>
-              <SearchBar
-                placeholder="Search by name or email..."
-                onSearch={handleVisitorSearch}
-                className="mb-3"
-              />
-              {errors.visitor && <p className="text-xs text-danger mb-2">{errors.visitor}</p>}
-              {visitorSearch && visitors.length > 0 && (
-                <div className="border border-border-grey rounded-lg divide-y divide-border-grey max-h-48 overflow-y-auto">
-                  {visitors.map((v) => (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => { setSelectedVisitor(v); setVisitorSearch('') }}
-                      className="w-full text-left px-4 py-3 hover:bg-light-grey transition-colors"
-                    >
-                      <div className="text-sm font-medium text-navy">{v.name}</div>
-                      <div className="text-xs text-mid-grey">{v.email} · {v.company}</div>
-                    </button>
-                  ))}
-                </div>
-              )}
-              {visitorSearch && visitors.length === 0 && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/visitors/new?walkin=${isWalkIn}`)}
-                  className="w-full text-sm text-primark-blue hover:underline text-center py-2"
-                >
-                  + Create new visitor profile
-                </button>
-              )}
-            </div>
-          )}
+          <select
+            value={selectedVisitor?.id ?? ''}
+            onChange={(e) => {
+              const v = visitors.find((vis) => vis.id === e.target.value) ?? null
+              setSelectedVisitor(v)
+              setErrors((prev) => ({ ...prev, visitor: '' }))
+            }}
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm text-charcoal bg-white min-h-input focus:outline-none focus:ring-2 focus:ring-primark-blue ${errors.visitor ? 'border-danger' : 'border-border-grey'}`}
+          >
+            <option value="" disabled>Select a visitor...</option>
+            {visitors.map((v) => {
+              const checkedIn = checkedInVisitorIds.has(v.id)
+              return (
+              <option key={v.id} value={v.id} disabled={checkedIn}>
+                {v.name} — {v.email}{checkedIn ? ' (currently on-site)' : ''}
+              </option>
+            )
+            })}
+          </select>
+          {errors.visitor && <p className="text-xs text-danger mt-1">{errors.visitor}</p>}
+          <div className="mt-2 text-right">
+            <button
+              type="button"
+              onClick={() => navigate('/visitors/new')}
+              className="text-xs text-primark-blue hover:underline"
+            >
+              + Create new visitor profile
+            </button>
+          </div>
         </div>
 
         {/* Visit details */}
@@ -216,7 +219,7 @@ export default function ScheduleVisitScreen() {
               label="Planned Arrival"
               value={plannedArrival}
               onChange={setPlannedArrival}
-              min={now}
+              min={isWalkIn ? undefined : now}
               required
               error={errors.arrival}
             />

@@ -55,7 +55,7 @@ export interface Visit {
   actual_arrival: string | null
   actual_departure: string | null
   status: 'scheduled' | 'checked_in' | 'departed' | 'cancelled'
-  access_status: 'unescorted' | 'awaiting_escort' | null
+  access_status: 'unescorted' | 'awaiting_escort' | 'escorted' | null
   induction_completed: boolean
   induction_completed_at: string | null
   induction_version: number | null
