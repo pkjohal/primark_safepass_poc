@@ -1,3 +1,4 @@
+import { Inbox } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../hooks/useNotifications'
 import { useAuditLog } from '../hooks/useAuditLog'
@@ -33,7 +34,7 @@ export default function InboxScreen() {
         </div>
       ) : notifications.length === 0 ? (
         <EmptyState
-          icon="📬"
+          icon={<Inbox className="w-7 h-7 text-mid-grey" />}
           title="No notifications"
           message="You'll receive alerts here for visitor check-ins, escort requests, and other events."
         />

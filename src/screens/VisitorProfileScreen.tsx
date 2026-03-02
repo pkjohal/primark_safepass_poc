@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { AlertTriangle } from 'lucide-react'
 import { useVisitors } from '../hooks/useVisitors'
 import { useVisits } from '../hooks/useVisits'
 import { usePreApprovals } from '../hooks/usePreApprovals'
@@ -117,7 +118,7 @@ export default function VisitorProfileScreen() {
       {/* Deny list alert */}
       {denyEntry && (
         <div className="bg-danger-bg border border-danger rounded-xl p-4 mb-6">
-          <p className="text-sm font-bold text-danger">⚠ This visitor is on the deny list</p>
+          <p className="text-sm font-bold text-danger flex items-center gap-1.5"><AlertTriangle className="w-4 h-4 shrink-0" /> This visitor is on the deny list</p>
           <p className="text-sm text-charcoal mt-1">{denyEntry.reason}</p>
           {denyEntry.is_permanent && <p className="text-xs text-mid-grey mt-1">Permanent ban</p>}
           {denyEntry.expires_at && <p className="text-xs text-mid-grey mt-1">Expires: {formatDate(denyEntry.expires_at, 'date-only')}</p>}

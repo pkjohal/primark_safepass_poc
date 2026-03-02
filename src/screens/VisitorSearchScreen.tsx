@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Users } from 'lucide-react'
 import { useVisitors } from '../hooks/useVisitors'
 import { useAuth } from '../context/AuthContext'
 import SearchBar from '../components/ui/SearchBar'
@@ -54,7 +55,7 @@ export default function VisitorSearchScreen() {
           </div>
         ) : filtered.length === 0 ? (
           <EmptyState
-            icon="👤"
+            icon={<Users className="w-7 h-7 text-mid-grey" />}
             title={query ? 'No visitors found' : 'No visitors yet'}
             message={query ? 'No visitor profiles match your search.' : 'No visitor profiles have been created yet.'}
             action={isReception ? { label: 'Create New Visitor', onClick: () => navigate('/visitors/new') } : undefined}

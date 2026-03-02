@@ -41,7 +41,7 @@ export function useNotifications(userId?: string, visitorId?: string) {
         (payload) => {
           const n = payload.new as Notification
           setNotifications((prev) => [n, ...prev])
-          toast(n.title, { icon: '🔔', duration: 5000 })
+          toast(n.title, { duration: 5000 })
         }
       )
       .on(

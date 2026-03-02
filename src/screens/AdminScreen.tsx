@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Users } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useAuditLog } from '../hooks/useAuditLog'
@@ -245,7 +246,7 @@ export default function AdminScreen() {
       {loading ? (
         <div className="space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-16 skeleton rounded-xl" />)}</div>
       ) : users.length === 0 ? (
-        <EmptyState icon="👥" title="No users" action={{ label: 'Add First User', onClick: openAdd }} />
+        <EmptyState icon={<Users className="w-7 h-7 text-mid-grey" />} title="No users" action={{ label: 'Add First User', onClick: openAdd }} />
       ) : (
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
           <table className="w-full">

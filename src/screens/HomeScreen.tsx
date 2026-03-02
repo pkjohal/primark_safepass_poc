@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { ClipboardList } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useVisits } from '../hooks/useVisits'
 import { useEscalation } from '../hooks/useEscalation'
@@ -116,7 +117,7 @@ export default function HomeScreen() {
           </div>
         ) : filteredScheduled.length === 0 ? (
           <EmptyState
-            icon="📋"
+            icon={<ClipboardList className="w-7 h-7 text-mid-grey" />}
             title="No visitors expected"
             message={search ? 'No visitors match your search' : 'No scheduled visitors for today'}
             action={isReception && !activeEvacuation ? { label: 'Register Walk-In', onClick: () => navigate('/visitors/new?walkin=true') } : undefined}

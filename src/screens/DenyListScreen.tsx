@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ShieldOff } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useDenyList } from '../hooks/useDenyList'
 import { useVisitors } from '../hooks/useVisitors'
@@ -208,7 +209,7 @@ export default function DenyListScreen() {
       {loading ? (
         <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-16 skeleton rounded-xl" />)}</div>
       ) : entries.length === 0 ? (
-        <EmptyState icon="🛡️" title="Deny list is empty" message="No visitors are currently on the deny list." />
+        <EmptyState icon={<ShieldOff className="w-7 h-7 text-mid-grey" />} title="Deny list is empty" message="No visitors are currently on the deny list." />
       ) : (
         <div className="bg-white rounded-xl shadow-card overflow-hidden">
           <table className="w-full">

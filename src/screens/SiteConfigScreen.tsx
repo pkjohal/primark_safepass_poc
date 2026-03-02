@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { useAuditLog } from '../hooks/useAuditLog'
@@ -137,7 +138,7 @@ export default function SiteConfigScreen() {
 
         <div className="bg-warning-bg border border-warning rounded-lg p-3">
           <p className="text-sm text-warning font-medium">
-            ⚠ Saving H&S content increments the version number and requires ALL visitors to re-complete their induction on their next visit.
+            <AlertTriangle className="w-4 h-4 shrink-0 inline-block mr-1.5 align-text-bottom" />Saving H&S content increments the version number and requires ALL visitors to re-complete their induction on their next visit.
           </p>
         </div>
 

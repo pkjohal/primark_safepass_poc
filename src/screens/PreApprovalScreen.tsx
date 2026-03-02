@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { ClipboardList } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { usePreApprovals } from '../hooks/usePreApprovals'
 import { useVisitors } from '../hooks/useVisitors'
@@ -242,7 +243,7 @@ export default function PreApprovalScreen() {
             <ApprovalSection title="History" items={historical} />
           )}
           {approvals.length === 0 && (
-            <EmptyState icon="📋" title="No pre-approvals" message="No pre-approval requests yet." />
+            <EmptyState icon={<ClipboardList className="w-7 h-7 text-mid-grey" />} title="No pre-approvals" message="No pre-approval requests yet." />
           )}
         </div>
       )}

@@ -1,3 +1,9 @@
+import type { ReactNode } from 'react'
+import {
+  Calendar, CalendarX, PenLine, UserCheck, ArrowRightFromLine,
+  AlertTriangle, AlertOctagon, Bell, ClipboardList, ClipboardCheck,
+  ShieldAlert, Flame, DoorOpen, Mail,
+} from 'lucide-react'
 import type { Notification } from '../../lib/types'
 import { formatDate } from '../../lib/utils'
 
@@ -7,20 +13,20 @@ interface Props {
   onAcknowledge?: () => void
 }
 
-const typeIcon: Record<string, string> = {
-  visit_scheduled:        '📅',
-  visit_cancelled:        '❌',
-  visit_amended:          '✏️',
-  checkin_host_alert:     '✅',
-  escort_required:        '🚶',
-  escalation:             '⚠️',
-  escalation_reception:   '🚨',
-  host_reminder:          '🔔',
-  pre_approval_request:   '📋',
-  pre_approval_decision:  '✍️',
-  deny_list_alert:        '🚫',
-  evacuation_activated:   '🔴',
-  walk_in_host_confirm:   '🚪',
+const typeIcon: Record<string, ReactNode> = {
+  visit_scheduled:        <Calendar        className="w-5 h-5 text-primark-blue" />,
+  visit_cancelled:        <CalendarX       className="w-5 h-5 text-danger" />,
+  visit_amended:          <PenLine         className="w-5 h-5 text-charcoal" />,
+  checkin_host_alert:     <UserCheck       className="w-5 h-5 text-success" />,
+  escort_required:        <ArrowRightFromLine className="w-5 h-5 text-primark-blue" />,
+  escalation:             <AlertTriangle   className="w-5 h-5 text-warning" />,
+  escalation_reception:   <AlertOctagon    className="w-5 h-5 text-danger" />,
+  host_reminder:          <Bell            className="w-5 h-5 text-primark-blue" />,
+  pre_approval_request:   <ClipboardList   className="w-5 h-5 text-charcoal" />,
+  pre_approval_decision:  <ClipboardCheck  className="w-5 h-5 text-success" />,
+  deny_list_alert:        <ShieldAlert     className="w-5 h-5 text-danger" />,
+  evacuation_activated:   <Flame           className="w-5 h-5 text-danger" />,
+  walk_in_host_confirm:   <DoorOpen        className="w-5 h-5 text-charcoal" />,
 }
 
 export default function NotificationRow({ notification: n, onClick, onAcknowledge }: Props) {
@@ -32,8 +38,8 @@ export default function NotificationRow({ notification: n, onClick, onAcknowledg
       onClick={onClick}
     >
       {/* Icon */}
-      <div className="w-10 h-10 rounded-full bg-white shadow-card flex items-center justify-center text-lg shrink-0">
-        {typeIcon[n.notification_type] ?? '📨'}
+      <div className="w-10 h-10 rounded-full bg-white shadow-card flex items-center justify-center shrink-0">
+        {typeIcon[n.notification_type] ?? <Mail className="w-5 h-5 text-mid-grey" />}
       </div>
 
       {/* Content */}

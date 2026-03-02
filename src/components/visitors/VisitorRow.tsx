@@ -8,13 +8,6 @@ interface Props {
   onCheckIn?: () => void
 }
 
-function PreArrivalIcon({ done }: { done: boolean }) {
-  return done ? (
-    <span className="text-success" title="Complete">✓</span>
-  ) : (
-    <span className="text-danger" title="Outstanding">✗</span>
-  )
-}
 
 export default function VisitorRow({ visit, onClick, onCheckIn }: Props) {
   const displayStatus = getDisplayStatus(visit)
@@ -50,13 +43,17 @@ export default function VisitorRow({ visit, onClick, onCheckIn }: Props) {
         <div className="text-sm text-mid-grey truncate max-w-[160px]">{visit.purpose}</div>
       </td>
       <td className="py-3 px-4 hidden sm:table-cell">
-        <div className="flex gap-2 text-sm">
-          <span title="H&S Induction">
-            H&S: <PreArrivalIcon done={visit.induction_completed} />
+        <div className="flex flex-col gap-1">
+          <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full w-fit ${
+            visit.induction_completed ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'
+          }`}>
+            {visit.induction_completed ? '✓' : '✗'} H&S
           </span>
           {hasDocuments && (
-            <span title="Documents">
-              Docs: <PreArrivalIcon done={visit.documents_accepted} />
+            <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full w-fit ${
+              visit.documents_accepted ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'
+            }`}>
+              {visit.documents_accepted ? '✓' : '✗'} Docs
             </span>
           )}
         </div>

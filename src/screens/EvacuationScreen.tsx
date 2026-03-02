@@ -54,7 +54,7 @@ export default function EvacuationScreen() {
             recipient_type: 'user',
             recipient_user_id: u.id,
             notification_type: 'evacuation_activated',
-            title: '🔴 EVACUATION ACTIVATED',
+            title: 'EVACUATION ACTIVATED',
             body: `Emergency evacuation has been activated at ${site.name} by ${user.name}. Please proceed to the assembly point.`,
           })
         ))

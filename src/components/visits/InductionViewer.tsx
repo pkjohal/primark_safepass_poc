@@ -19,8 +19,10 @@ export default function InductionViewer({ site, onComplete, loading = false }: P
           <iframe
             src={site.hs_video_url}
             className="w-full h-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
             title="Health & Safety Induction Video"
+            referrerPolicy="strict-origin-when-cross-origin"
           />
         </div>
       )}
