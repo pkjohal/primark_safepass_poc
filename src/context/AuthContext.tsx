@@ -21,6 +21,7 @@ interface AuthContextValue {
   logout: () => void
   unreadNotificationCount: number
   activeEvacuation: EvacuationEvent | null
+  setActiveEvacuation: (event: EvacuationEvent | null) => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -180,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         unreadNotificationCount,
         activeEvacuation,
+        setActiveEvacuation,
       }}
     >
       {children}

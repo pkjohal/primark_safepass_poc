@@ -39,6 +39,7 @@ export default function SelfServiceScreen() {
   const [savingPhone, setSavingPhone] = useState(false)
   const [checkingIn, setCheckingIn] = useState(false)
   const [signingOut, setSigningOut] = useState(false)
+  const [evacuationActive, setEvacuationActive] = useState(false)
 
   const { notifications, markRead } = useNotifications(undefined, visitor?.id)
 
@@ -61,6 +62,15 @@ export default function SelfServiceScreen() {
         const { data: siteData } = await supabase.from('sites').select('*').eq('id', vs[0].site_id).single()
         if (siteData) {
           setSite(siteData as Site)
+
+          // Check for active evacuation
+          const { data: evacData } = await supabase
+            .from('evacuation_events')
+            .select('id')
+            .eq('site_id', siteData.id)
+            .is('closed_at', null)
+            .maybeSingle()
+          setEvacuationActive(!!evacData)
 
           // Check induction requirement
           const { valid, record } = await checkInductionValid(v.id, siteData as Site)
@@ -158,6 +168,7 @@ export default function SelfServiceScreen() {
 
   async function handleSignOut() {
     if (!visitor) return
+    if (evacuationActive) { toast.error('Sign-out is suspended during an evacuation — please go to the assembly point'); return }
     const checkedInVisit = visits.find((v) => v.status === 'checked_in')
     if (!checkedInVisit) { toast.error('No active check-in found'); return }
 
@@ -343,7 +354,7 @@ export default function SelfServiceScreen() {
 
             {/* ── Active visit ── */}
             {checkedInVisit && (
-              <ActiveVisitCard visit={checkedInVisit} site={site} onSignOut={handleSignOut} signingOut={signingOut} />
+              <ActiveVisitCard visit={checkedInVisit} site={site} onSignOut={handleSignOut} signingOut={signingOut} evacuationActive={evacuationActive} />
             )}
 
             {/* ── Upcoming visits ── */}
@@ -657,7 +668,7 @@ function InductionStatusCard({
   )
 }
 
-function ActiveVisitCard({ visit, site, onSignOut, signingOut }: { visit: VisitWithVisitor; site: Site | null; onSignOut: () => void; signingOut: boolean }) {
+function ActiveVisitCard({ visit, site, onSignOut, signingOut, evacuationActive }: { visit: VisitWithVisitor; site: Site | null; onSignOut: () => void; signingOut: boolean; evacuationActive: boolean }) {
   const now = Date.now()
   const start = visit.actual_arrival ? new Date(visit.actual_arrival).getTime() : new Date(visit.planned_arrival).getTime()
   const end = new Date(visit.planned_departure).getTime()
@@ -728,14 +739,20 @@ function ActiveVisitCard({ visit, site, onSignOut, signingOut }: { visit: VisitW
           </div>
         </div>
 
-        <button
-          onClick={onSignOut}
-          disabled={signingOut}
-          className="w-full mt-1 py-3 border-2 border-success bg-success-bg text-success rounded-xl font-semibold text-sm hover:bg-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          <LogOut className="w-4 h-4" />
-          {signingOut ? 'Signing out...' : 'Sign Out'}
-        </button>
+        {evacuationActive ? (
+          <div className="mt-1 w-full py-3 px-4 bg-danger-bg border-2 border-danger rounded-xl text-danger text-sm font-semibold text-center">
+            Sign-out suspended — evacuation in progress. Please go to the assembly point.
+          </div>
+        ) : (
+          <button
+            onClick={onSignOut}
+            disabled={signingOut}
+            className="w-full mt-1 py-3 border-2 border-success bg-success-bg text-success rounded-xl font-semibold text-sm hover:bg-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            {signingOut ? 'Signing out...' : 'Sign Out'}
+          </button>
+        )}
       </div>
     </div>
   )

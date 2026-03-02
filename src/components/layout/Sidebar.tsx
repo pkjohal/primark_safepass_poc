@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Calendar, CalendarPlus, ClipboardCheck,
-  Users, ShieldOff, Settings, SlidersHorizontal,
+  Users, ShieldOff, Settings, SlidersHorizontal, ShieldAlert,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { hasMinRole } from '../../lib/permissions'
@@ -70,6 +70,12 @@ const navSections: NavSection[] = [
   {
     label: 'Administration',
     items: [
+      {
+        to: '/evacuation-history',
+        label: 'Evacuation History',
+        minRole: 'site_admin',
+        icon: <ShieldAlert className="w-[18px] h-[18px]" />,
+      },
       {
         to: '/site-config',
         label: 'Site Config',
