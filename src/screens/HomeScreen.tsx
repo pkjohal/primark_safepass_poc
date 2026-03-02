@@ -1,9 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { useAuth } from '../context/AuthContext'
 import { useVisits } from '../hooks/useVisits'
 import { useEscalation } from '../hooks/useEscalation'
+import { useEvacuation } from '../hooks/useEvacuation'
+import { useNotifications } from '../hooks/useNotifications'
+import { useAuditLog } from '../hooks/useAuditLog'
 import { getDisplayStatus, formatDate } from '../lib/utils'
+import { supabase } from '../lib/supabase'
 import StatCard from '../components/ui/StatCard'
 import VisitorRow from '../components/visitors/VisitorRow'
 import CheckInModal from '../components/visits/CheckInModal'
@@ -13,11 +18,15 @@ import type { VisitWithVisitor } from '../lib/types'
 
 export default function HomeScreen() {
   const navigate = useNavigate()
-  const { user, site, isHost, isReception, isSiteAdmin, activeEvacuation } = useAuth()
+  const { user, site, isHost, isReception, isSiteAdmin, activeEvacuation, setActiveEvacuation } = useAuth()
   const { todaysVisits, checkedInVisits, loading, updateVisit, fetchVisits } = useVisits()
   const [search, setSearch] = useState('')
   const [showEvacConfirm, setShowEvacConfirm] = useState(false)
+  const [evacuating, setEvacuating] = useState(false)
   const [checkInVisitId, setCheckInVisitId] = useState<string | null>(null)
+  const { activate, getCheckedInVisitors } = useEvacuation()
+  const { sendNotification } = useNotifications()
+  const { log } = useAuditLog()
 
   // Escalation polling — only for reception/site_admin
   useEscalation(site, user?.id ?? null, isReception)
@@ -47,6 +56,41 @@ export default function HomeScreen() {
     await updateVisit(v.id, { status: 'departed', actual_departure: new Date().toISOString() })
     fetchVisits()
   }
+  async function handleActivateEvacuation() {
+    if (!user || !site) return
+    setEvacuating(true)
+    try {
+      const checkedIn = await getCheckedInVisitors(site.id)
+      const event = await activate(site.id, user.id, checkedIn.length)
+      const { data: staffUsers } = await supabase
+        .from('members')
+        .select('id')
+        .eq('site_id', site.id)
+        .eq('is_active', true)
+      if (staffUsers) {
+        await Promise.all(
+          (staffUsers as { id: string }[]).map((u) =>
+            sendNotification({
+              recipient_type: 'user',
+              recipient_user_id: u.id,
+              notification_type: 'evacuation_activated',
+              title: 'EVACUATION ACTIVATED',
+              body: `Emergency evacuation has been activated at ${site.name} by ${user.name}. Please proceed to the assembly point.`,
+            })
+          )
+        )
+      }
+      await log('evacuation_activated', 'evacuation_event', event.id, user.id, { headcount: checkedIn.length })
+      setActiveEvacuation(event)
+      setShowEvacConfirm(false)
+      navigate('/evacuation')
+    } catch {
+      toast.error('Failed to activate evacuation')
+    } finally {
+      setEvacuating(false)
+    }
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -59,8 +103,13 @@ export default function HomeScreen() {
         </div>
         {isSiteAdmin && (
           <button
-            onClick={() => setShowEvacConfirm(true)}
-            className="flex items-center gap-2 bg-danger text-white px-5 py-3 rounded-xl font-semibold text-sm hover:bg-red-700 transition-colors min-h-btn"
+            onClick={() => !activeEvacuation && setShowEvacConfirm(true)}
+            disabled={!!activeEvacuation}
+            className={`flex items-center gap-2 px-5 py-3 rounded-xl font-semibold text-sm transition-colors min-h-btn ${
+              activeEvacuation
+                ? 'bg-mid-grey text-white cursor-not-allowed opacity-50'
+                : 'bg-danger text-white hover:bg-red-700'
+            }`}
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
@@ -208,9 +257,9 @@ export default function HomeScreen() {
         <ConfirmDialog
           title="Activate Emergency Evacuation?"
           message="This will immediately suspend all check-ins and sign-outs and display an evacuation alert to all logged-in users. This action should only be used in a genuine emergency."
-          confirmLabel="Activate Evacuation"
+          confirmLabel={evacuating ? 'Activating...' : 'Activate Evacuation'}
           variant="danger"
-          onConfirm={() => { setShowEvacConfirm(false); navigate('/evacuation?activate=true') }}
+          onConfirm={handleActivateEvacuation}
           onCancel={() => setShowEvacConfirm(false)}
         />
       )}

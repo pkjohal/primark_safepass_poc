@@ -1,27 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useEvacuation } from '../hooks/useEvacuation'
-import { useNotifications } from '../hooks/useNotifications'
 import { useAuditLog } from '../hooks/useAuditLog'
 import { formatDate } from '../lib/utils'
 import ConfirmDialog from '../components/ui/ConfirmDialog'
 import type { VisitWithVisitor } from '../lib/types'
-import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function EvacuationScreen() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const { user, site, activeEvacuation } = useAuth()
-  const { activate, close, updateHeadcount, getCheckedInVisitors } = useEvacuation()
-  const { sendNotification } = useNotifications()
+  const { user, site, activeEvacuation, setActiveEvacuation } = useAuth()
+  const { close, updateHeadcount, getCheckedInVisitors } = useEvacuation()
   const { log } = useAuditLog()
 
   const [visitors, setVisitors] = useState<VisitWithVisitor[]>([])
   const [accounted, setAccounted] = useState<Set<string>>(new Set())
-  const [activating, setActivating] = useState(false)
-  const [showActivateConfirm, setShowActivateConfirm] = useState(searchParams.get('activate') === 'true')
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [notes, setNotes] = useState('')
   const [closing, setClosing] = useState(false)
@@ -33,44 +27,6 @@ export default function EvacuationScreen() {
       getCheckedInVisitors(site.id).then(setVisitors)
     }
   }, [activeEvacuation, site, getCheckedInVisitors])
-
-  async function handleActivate() {
-    if (!user || !site) return
-    setActivating(true)
-    try {
-      const checkedIn = await getCheckedInVisitors(site.id)
-      const event = await activate(site.id, user.id, checkedIn.length)
-      setVisitors(checkedIn)
-
-      // Notify all on-site users
-      const { data: staffUsers } = await supabase
-        .from('members')
-        .select('id')
-        .eq('site_id', site.id)
-        .eq('is_active', true)
-      if (staffUsers) {
-        await Promise.all(staffUsers.map((u: { id: string }) =>
-          sendNotification({
-            recipient_type: 'user',
-            recipient_user_id: u.id,
-            notification_type: 'evacuation_activated',
-            title: 'EVACUATION ACTIVATED',
-            body: `Emergency evacuation has been activated at ${site.name} by ${user.name}. Please proceed to the assembly point.`,
-          })
-        ))
-      }
-
-      await log('evacuation_activated', 'evacuation_event', event.id, user.id, {
-        headcount: checkedIn.length,
-      })
-      setShowActivateConfirm(false)
-      toast.error('Evacuation activated', { duration: 10000 })
-    } catch {
-      toast.error('Failed to activate evacuation')
-    } finally {
-      setActivating(false)
-    }
-  }
 
   async function handleMarkAccounted(visitId: string) {
     const next = new Set(accounted)
@@ -93,6 +49,7 @@ export default function EvacuationScreen() {
         headcount_accounted: accounted.size,
         notes,
       })
+      setActiveEvacuation(null)
       toast.success('Evacuation closed — normal operations resumed')
       setShowCloseConfirm(false)
       navigate('/')
@@ -103,8 +60,7 @@ export default function EvacuationScreen() {
     }
   }
 
-  // If no active evacuation and not about to activate, show prompt
-  if (!activeEvacuation && !showActivateConfirm) {
+  if (!activeEvacuation) {
     return (
       <div className="p-6 max-w-2xl mx-auto">
         <div className="bg-white rounded-xl shadow-card p-8 text-center">
@@ -113,26 +69,15 @@ export default function EvacuationScreen() {
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
             </svg>
           </div>
-          <h2 className="text-xl font-bold text-navy mb-2">Emergency Evacuation</h2>
-          <p className="text-mid-grey mb-6 text-sm">No active evacuation event. Use this only in a genuine emergency.</p>
+          <h2 className="text-xl font-bold text-navy mb-2">No Active Evacuation</h2>
+          <p className="text-mid-grey mb-6 text-sm">There is no active evacuation event for this site.</p>
           <button
-            onClick={() => setShowActivateConfirm(true)}
-            className="bg-danger text-white px-8 py-4 rounded-xl font-bold text-base hover:bg-red-700 transition-colors"
+            onClick={() => navigate('/')}
+            className="bg-primark-blue text-white px-6 py-3 rounded-xl font-semibold text-sm hover:bg-primark-blue-dark transition-colors"
           >
-            Activate Evacuation
+            Back to Dashboard
           </button>
         </div>
-
-        {showActivateConfirm && (
-          <ConfirmDialog
-            title="Activate Emergency Evacuation?"
-            message="This will suspend all check-ins and sign-outs and display a full-screen evacuation alert to all users. Only use in a genuine emergency."
-            confirmLabel={activating ? 'Activating...' : 'Activate Evacuation'}
-            variant="danger"
-            onConfirm={handleActivate}
-            onCancel={() => setShowActivateConfirm(false)}
-          />
-        )}
       </div>
     )
   }
@@ -179,12 +124,14 @@ export default function EvacuationScreen() {
           >
             Print Headcount List
           </button>
-          <button
-            onClick={() => setShowCloseConfirm(true)}
-            className="flex-1 bg-alert-red-dark text-white font-bold py-3 rounded-xl border-2 border-white hover:bg-red-900 transition-colors"
-          >
-            Close Evacuation
-          </button>
+          {accounted.size >= visitors.length && (
+            <button
+              onClick={() => setShowCloseConfirm(true)}
+              className="flex-1 bg-alert-red-dark text-white font-bold py-3 rounded-xl border-2 border-white hover:bg-red-900 transition-colors"
+            >
+              Close Evacuation
+            </button>
+          )}
         </div>
 
         {/* Visitor lists */}
@@ -200,17 +147,6 @@ export default function EvacuationScreen() {
           </div>
         )}
       </div>
-
-      {showActivateConfirm && (
-        <ConfirmDialog
-          title="Activate Emergency Evacuation?"
-          message="This will suspend all check-ins and sign-outs and display a full-screen evacuation alert to all users."
-          confirmLabel={activating ? 'Activating...' : 'Activate Evacuation'}
-          variant="danger"
-          onConfirm={handleActivate}
-          onCancel={() => setShowActivateConfirm(false)}
-        />
-      )}
 
       {showCloseConfirm && (
         <ConfirmDialog
