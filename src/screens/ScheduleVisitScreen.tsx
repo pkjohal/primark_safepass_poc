@@ -9,7 +9,7 @@ import { useInduction } from '../hooks/useInduction'
 import { useAuth } from '../context/AuthContext'
 import PageHeader from '../components/layout/PageHeader'
 import DateTimePicker from '../components/ui/DateTimePicker'
-import type { Visitor, SafeUser } from '../lib/types'
+import type { Visitor, SafeUser, Site } from '../lib/types'
 import toast from 'react-hot-toast'
 
 interface DocumentDraft {
@@ -23,7 +23,7 @@ export default function ScheduleVisitScreen() {
   const preselectedVisitorId = params.get('visitor_id')
   const isWalkIn = params.get('walkin') === 'true'
 
-  const { user, site } = useAuth()
+  const { user, site, isSiteAdmin } = useAuth()
   const { createVisit, updateVisit } = useVisits()
   const { getById, visitors } = useVisitors()
   const { sendNotification } = useNotifications()
@@ -31,6 +31,8 @@ export default function ScheduleVisitScreen() {
   const { checkInductionValid } = useInduction()
 
   const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null)
+  const [selectedSite, setSelectedSite] = useState<Site | null>(site)
+  const [allSites, setAllSites] = useState<Site[]>([])
   const [allUsers, setAllUsers] = useState<SafeUser[]>([])
   const [hostContactId, setHostContactId] = useState<string>(user?.id ?? '')
   const [backupContactId, setBackupContactId] = useState<string>('')
@@ -52,15 +54,26 @@ export default function ScheduleVisitScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [checkedInVisitorIds, setCheckedInVisitorIds] = useState<Set<string>>(new Set())
 
+  // Load all sites for admin location picker
   useEffect(() => {
-    if (!site) return
+    if (!isSiteAdmin) return
+    supabase
+      .from('sites')
+      .select('*')
+      .eq('is_active', true)
+      .order('name')
+      .then(({ data }) => setAllSites((data as Site[]) ?? []))
+  }, [isSiteAdmin])
+
+  useEffect(() => {
+    if (!selectedSite) return
     supabase
       .from('visits')
       .select('visitor_id')
-      .eq('site_id', site.id)
+      .eq('site_id', selectedSite.id)
       .eq('status', 'checked_in')
       .then(({ data }) => setCheckedInVisitorIds(new Set((data ?? []).map((r: { visitor_id: string }) => r.visitor_id))))
-  }, [site])
+  }, [selectedSite])
 
   useEffect(() => {
     if (preselectedVisitorId) {
@@ -68,16 +81,25 @@ export default function ScheduleVisitScreen() {
     }
   }, [preselectedVisitorId, getById])
 
+  // Re-fetch members whenever the selected site changes; reset host/backup selections
   useEffect(() => {
-    if (!site) return
+    if (!selectedSite) return
     supabase
       .from('members')
       .select('id,name,username,email,site_id,role,is_active,created_at,updated_at')
-      .eq('site_id', site.id)
+      .eq('site_id', selectedSite.id)
       .eq('is_active', true)
+      .in('role', ['host', 'reception'])
       .order('name')
-      .then(({ data }) => setAllUsers((data as SafeUser[]) ?? []))
-  }, [site])
+      .then(({ data }) => {
+        const members = (data as SafeUser[]) ?? []
+        setAllUsers(members)
+        // Default host to the logged-in user if they belong to this site, otherwise first member
+        const selfInSite = members.find((m) => m.id === user?.id)
+        setHostContactId(selfInSite ? selfInSite.id : (members[0]?.id ?? ''))
+        setBackupContactId('')
+      })
+  }, [selectedSite, user?.id])
 
   function addDocument() {
     if (!newDocName.trim() || !newDocContent.trim()) return
@@ -102,14 +124,14 @@ export default function ScheduleVisitScreen() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!validate() || !selectedVisitor || !user || !site) return
+    if (!validate() || !selectedVisitor || !user || !selectedSite) return
     setLoading(true)
 
     try {
       const hostId = hostContactId || user.id
       const visit = await createVisit({
         visitor_id: selectedVisitor.id,
-        site_id: site.id,
+        site_id: selectedSite.id,
         host_user_id: hostId,
         purpose: purpose.trim(),
         planned_arrival: new Date(plannedArrival).toISOString(),
@@ -118,7 +140,7 @@ export default function ScheduleVisitScreen() {
       })
 
       // If visitor already has a valid induction, mark it complete on this visit
-      const { valid: inductionValid, record: inductionRecord } = await checkInductionValid(selectedVisitor.id, site)
+      const { valid: inductionValid, record: inductionRecord } = await checkInductionValid(selectedVisitor.id, selectedSite)
       if (inductionValid && inductionRecord) {
         await updateVisit(visit.id, {
           induction_completed: true,
@@ -147,7 +169,7 @@ export default function ScheduleVisitScreen() {
         recipient_visitor_id: selectedVisitor.id,
         visit_id: visit.id,
         notification_type: 'visit_scheduled',
-        title: `Visit scheduled: ${site.name}`,
+        title: `Visit scheduled: ${selectedSite.name}`,
         body: `You have a visit scheduled for ${purpose.trim()}. Please complete your H&S induction before arriving.`,
         action_url: `/self-service/${selectedVisitor.access_token}`,
       })
@@ -213,6 +235,36 @@ export default function ScheduleVisitScreen() {
         {/* Visit details */}
         <div className="bg-white rounded-xl shadow-card p-5 space-y-4">
           <h2 className="text-base font-semibold text-navy">Visit Details</h2>
+
+          {/* Location */}
+          <div>
+            <label className="block text-xs font-medium text-mid-grey uppercase tracking-wide mb-1.5">
+              Location
+            </label>
+            {isSiteAdmin ? (
+              <select
+                value={selectedSite?.id ?? ''}
+                onChange={(e) => {
+                  const s = allSites.find((x) => x.id === e.target.value) ?? null
+                  setSelectedSite(s)
+                }}
+                className="w-full px-3 py-2.5 border border-border-grey rounded-lg text-sm text-charcoal bg-white min-h-input focus:outline-none focus:ring-2 focus:ring-primark-blue"
+              >
+                <option value="" disabled>Select a location...</option>
+                {allSites.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2.5 border border-border-grey rounded-lg bg-light-grey">
+                <svg className="w-4 h-4 text-mid-grey shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="text-sm text-charcoal">{selectedSite?.name ?? '—'}</span>
+              </div>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <DateTimePicker
