@@ -16,6 +16,12 @@ import NotificationRow from '../components/notifications/NotificationRow'
 import type { Visitor, VisitWithVisitor, VisitDocument, Site, InductionRecord } from '../lib/types'
 import toast from 'react-hot-toast'
 
+interface SiteInductionStatus {
+  required: boolean
+  validRecord: InductionRecord | null
+  latestRecord: InductionRecord | null
+}
+
 export default function SelfServiceScreen() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
@@ -26,13 +32,17 @@ export default function SelfServiceScreen() {
   const [visitor, setVisitor] = useState<Visitor | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [site, setSite] = useState<Site | null>(null)
+
+  // Per-site state — keyed by site ID
+  const [sitesMap, setSitesMap] = useState<Record<string, Site>>({})
+  const [inductionStatusBySite, setInductionStatusBySite] = useState<Record<string, SiteInductionStatus>>({})
+
+  // The site whose induction is currently open in the viewer
+  const [activeSite, setActiveSite] = useState<Site | null>(null)
+
   const [visits, setVisits] = useState<VisitWithVisitor[]>([])
   const [pendingDocuments, setPendingDocuments] = useState<VisitDocument[]>([])
   const [pendingVisitId, setPendingVisitId] = useState<string | null>(null)
-  const [inductionRequired, setInductionRequired] = useState(false)
-  const [inductionRecord, setInductionRecord] = useState<InductionRecord | null>(null)
-  const [latestInductionRecord, setLatestInductionRecord] = useState<InductionRecord | null>(null)
   const [activeView, setActiveView] = useState<'home' | 'induction' | 'documents' | 'notifications' | 'gdpr'>('home')
   const [editingPhone, setEditingPhone] = useState(false)
   const [phone, setPhone] = useState('')
@@ -54,42 +64,67 @@ export default function SelfServiceScreen() {
       setVisitor(v)
       setPhone(v.phone ?? '')
 
-      // Get the site from the visitor's most recent visit
       const vs = await getVisitsForVisitor(v.id)
       setVisits(vs)
 
       if (vs.length > 0) {
-        const { data: siteData } = await supabase.from('sites').select('*').eq('id', vs[0].site_id).single()
-        if (siteData) {
-          setSite(siteData as Site)
+        // Collect all distinct sites this visitor has active or upcoming visits at
+        const activeSiteIds = [...new Set(
+          vs
+            .filter((visit) => visit.status === 'scheduled' || visit.status === 'checked_in')
+            .map((visit) => visit.site_id)
+        )]
 
-          // Check for active evacuation
+        // Also collect all site IDs for display purposes (active visit card, past visits, etc.)
+        const allSiteIds = [...new Set(vs.map((visit) => visit.site_id))]
+
+        // Fetch all sites in one query
+        const { data: sitesData } = await supabase
+          .from('sites')
+          .select('*')
+          .in('id', allSiteIds)
+        const newSitesMap: Record<string, Site> = {}
+        for (const s of (sitesData ?? [])) {
+          newSitesMap[(s as Site).id] = s as Site
+        }
+        setSitesMap(newSitesMap)
+
+        // Check for active evacuation at any site with an active visit
+        const checkedInSiteId = vs.find((visit) => visit.status === 'checked_in')?.site_id
+        if (checkedInSiteId) {
           const { data: evacData } = await supabase
             .from('evacuation_events')
             .select('id')
-            .eq('site_id', siteData.id)
+            .eq('site_id', checkedInSiteId)
             .is('closed_at', null)
             .maybeSingle()
           setEvacuationActive(!!evacData)
+        }
 
-          // Check induction requirement
-          const { valid, record } = await checkInductionValid(v.id, siteData as Site)
-          setInductionRequired(!valid)
-          setInductionRecord(record)
+        // Check induction status separately for each site with active/upcoming visits
+        const statusMap: Record<string, SiteInductionStatus> = {}
+        for (const siteId of activeSiteIds) {
+          const site = newSitesMap[siteId]
+          if (!site) continue
 
-          // Fetch the most recent induction record regardless of version/expiry (for status display)
+          const { valid, record } = await checkInductionValid(v.id, site)
           const { data: latestRec } = await supabase
             .from('induction_records')
             .select('*')
             .eq('visitor_id', v.id)
-            .eq('site_id', siteData.id)
+            .eq('site_id', siteId)
             .order('completed_at', { ascending: false })
             .limit(1)
             .maybeSingle()
-          setLatestInductionRecord(latestRec as InductionRecord | null)
+          statusMap[siteId] = {
+            required: !valid,
+            validRecord: record,
+            latestRecord: latestRec as InductionRecord | null,
+          }
         }
+        setInductionStatusBySite(statusMap)
 
-        // Find pending documents across upcoming visits
+        // Pending documents across all upcoming visits (documents are not site-scoped)
         const upcomingVisitIds = vs.filter((vv) => vv.status === 'scheduled').map((vv) => vv.id)
         if (upcomingVisitIds.length > 0) {
           setPendingVisitId(upcomingVisitIds[0])
@@ -98,8 +133,7 @@ export default function SelfServiceScreen() {
             .select('*')
             .in('visit_id', upcomingVisitIds)
             .eq('accepted', false)
-          const pendingDocs = (docs as VisitDocument[]) ?? []
-          setPendingDocuments(pendingDocs)
+          setPendingDocuments((docs as VisitDocument[]) ?? [])
         }
       }
 
@@ -123,12 +157,18 @@ export default function SelfServiceScreen() {
   }
 
   async function handleInductionComplete() {
-    if (!visitor || !site || !pendingVisitId) return
-    await completeInduction(visitor.id, site.id, site.hs_content_version, pendingVisitId)
-    const { valid, record } = await checkInductionValid(visitor.id, site)
-    setInductionRequired(!valid)
-    setInductionRecord(record)
-    setLatestInductionRecord(record)
+    if (!visitor || !activeSite) return
+    // Find the first upcoming visit at this specific site to attach the record to
+    const siteVisit = visits.find((v) => v.site_id === activeSite.id && v.status === 'scheduled')
+    if (!siteVisit) return
+
+    await completeInduction(visitor.id, activeSite.id, activeSite.hs_content_version, siteVisit.id)
+    const { valid, record } = await checkInductionValid(visitor.id, activeSite)
+    setInductionStatusBySite((prev) => ({
+      ...prev,
+      [activeSite.id]: { ...prev[activeSite.id], required: !valid, validRecord: record, latestRecord: record },
+    }))
+    setActiveSite(null)
     setActiveView('home')
     toast.success('Induction completed')
   }
@@ -144,7 +184,7 @@ export default function SelfServiceScreen() {
   }
 
   async function handleSelfCheckIn() {
-    if (!visitor || !site) return
+    if (!visitor) return
     const todayVisit = visits.find((v) => v.status === 'scheduled' && isToday(v.planned_arrival))
     if (!todayVisit) { toast.error('No visit scheduled for today'); return }
 
@@ -155,7 +195,6 @@ export default function SelfServiceScreen() {
         actual_arrival: new Date().toISOString(),
         access_status: 'unescorted',
       })
-      // Refresh visits
       const vs = await getVisitsForVisitor(visitor.id)
       setVisits(vs)
       toast.success('Checked in successfully')
@@ -189,9 +228,15 @@ export default function SelfServiceScreen() {
   }
 
   async function submitGdprRequest(type: 'access' | 'deletion') {
-    if (!visitor || !site) return
-    // Find a site_admin to notify
-    const { data: admins } = await supabase.from('members').select('id').eq('site_id', site.id).eq('role', 'site_admin').eq('is_active', true)
+    if (!visitor) return
+    // Notify site admins at all sites this visitor has visits at
+    const siteIds = [...new Set(visits.map((v) => v.site_id))]
+    const { data: admins } = await supabase
+      .from('members')
+      .select('id')
+      .in('site_id', siteIds)
+      .eq('role', 'site_admin')
+      .eq('is_active', true)
     if (admins && admins.length > 0) {
       await supabase.from('messages').insert(
         admins.map((a: { id: string }) => ({
@@ -239,6 +284,8 @@ export default function SelfServiceScreen() {
     (v.status === 'scheduled' && new Date(v.planned_arrival) < now)
   )
   const unreadCount = notifications.filter((n) => !n.is_read).length
+
+  const anyInductionRequired = Object.values(inductionStatusBySite).some((s) => s.required)
 
   return (
     <div className="min-h-screen bg-light-grey">
@@ -316,19 +363,28 @@ export default function SelfServiceScreen() {
             </div>
 
             {/* Pending actions */}
-            {(inductionRequired || pendingDocuments.length > 0 || (todayVisit && visitor.visitor_type === 'internal_staff' && !checkedInVisit)) && (
+            {(anyInductionRequired || pendingDocuments.length > 0 || (todayVisit && visitor.visitor_type === 'internal_staff' && !checkedInVisit)) && (
               <div className="bg-white rounded-xl shadow-card p-5">
                 <h2 className="text-base font-semibold text-navy mb-4">Actions Required</h2>
                 <div className="space-y-3">
-                  {inductionRequired && site && (
-                    <ActionButton
-                      icon={<ClipboardCheck className="w-6 h-6" />}
-                      label="Complete H&S Induction"
-                      description="Required before your next visit"
-                      colour="amber"
-                      onClick={() => setActiveView('induction')}
-                    />
-                  )}
+                  {/* One induction action per site that needs it */}
+                  {Object.entries(inductionStatusBySite)
+                    .filter(([, status]) => status.required)
+                    .map(([siteId]) => {
+                      const site = sitesMap[siteId]
+                      if (!site) return null
+                      return (
+                        <ActionButton
+                          key={siteId}
+                          icon={<ClipboardCheck className="w-6 h-6" />}
+                          label="Complete H&S Induction"
+                          description={site.name}
+                          colour="amber"
+                          onClick={() => { setActiveSite(site); setActiveView('induction') }}
+                        />
+                      )
+                    })
+                  }
                   {pendingDocuments.length > 0 && (
                     <ActionButton
                       icon={<FileText className="w-6 h-6" />}
@@ -354,7 +410,13 @@ export default function SelfServiceScreen() {
 
             {/* ── Active visit ── */}
             {checkedInVisit && (
-              <ActiveVisitCard visit={checkedInVisit} site={site} onSignOut={handleSignOut} signingOut={signingOut} evacuationActive={evacuationActive} />
+              <ActiveVisitCard
+                visit={checkedInVisit}
+                site={sitesMap[checkedInVisit.site_id] ?? null}
+                onSignOut={handleSignOut}
+                signingOut={signingOut}
+                evacuationActive={evacuationActive}
+              />
             )}
 
             {/* ── Upcoming visits ── */}
@@ -372,34 +434,48 @@ export default function SelfServiceScreen() {
                       <tr className="bg-light-grey text-left">
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Date & Time</th>
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Purpose</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Location</th>
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Host</th>
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">H&S</th>
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Docs</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {upcomingVisits.map((v) => (
-                        <tr key={v.id} className="border-t border-border-grey">
-                          <td className="px-5 py-3 whitespace-nowrap">
-                            <div className="text-xs font-semibold text-navy">{formatDate(v.planned_arrival, 'date-only')}</div>
-                            <div className="text-xs text-mid-grey">{formatDate(v.planned_arrival, 'time-only')} – {formatDate(v.planned_departure, 'time-only')}</div>
-                          </td>
-                          <td className="px-5 py-3 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
-                          <td className="px-5 py-3 text-charcoal hidden sm:table-cell">{v.host.name}</td>
-                          <td className="px-5 py-3">
-                            {v.induction_completed || !inductionRequired
-                              ? <Check className="w-4 h-4 text-success" />
-                              : <button onClick={() => setActiveView('induction')} className="text-xs font-semibold text-warning underline">Required</button>
-                            }
-                          </td>
-                          <td className="px-5 py-3 hidden sm:table-cell">
-                            {pendingDocuments.length === 0
-                              ? <Check className="w-4 h-4 text-success" />
-                              : <button onClick={() => setActiveView('documents')} className="text-xs font-semibold text-warning underline">Review</button>
-                            }
-                          </td>
-                        </tr>
-                      ))}
+                      {upcomingVisits.map((v) => {
+                        const visitSiteStatus = inductionStatusBySite[v.site_id]
+                        const visitSite = sitesMap[v.site_id]
+                        const inductionDone = v.induction_completed || !visitSiteStatus?.required
+                        return (
+                          <tr key={v.id} className="border-t border-border-grey">
+                            <td className="px-5 py-3 whitespace-nowrap">
+                              <div className="text-xs font-semibold text-navy">{formatDate(v.planned_arrival, 'date-only')}</div>
+                              <div className="text-xs text-mid-grey">{formatDate(v.planned_arrival, 'time-only')} – {formatDate(v.planned_departure, 'time-only')}</div>
+                            </td>
+                            <td className="px-5 py-3 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
+                            <td className="px-5 py-3 text-charcoal hidden sm:table-cell">{visitSite?.name ?? '—'}</td>
+                            <td className="px-5 py-3 text-charcoal hidden sm:table-cell">{v.host.name}</td>
+                            <td className="px-5 py-3">
+                              {inductionDone
+                                ? <Check className="w-4 h-4 text-success" />
+                                : (
+                                  <button
+                                    onClick={() => { if (visitSite) { setActiveSite(visitSite); setActiveView('induction') } }}
+                                    className="text-xs font-semibold text-warning underline"
+                                  >
+                                    Required
+                                  </button>
+                                )
+                              }
+                            </td>
+                            <td className="px-5 py-3 hidden sm:table-cell">
+                              {pendingDocuments.length === 0
+                                ? <Check className="w-4 h-4 text-success" />
+                                : <button onClick={() => setActiveView('documents')} className="text-xs font-semibold text-warning underline">Review</button>
+                              }
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -421,6 +497,7 @@ export default function SelfServiceScreen() {
                       <tr className="bg-light-grey text-left">
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Date</th>
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Purpose</th>
+                        <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Location</th>
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide hidden sm:table-cell">Host</th>
                         <th className="px-5 py-2.5 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
                       </tr>
@@ -430,6 +507,7 @@ export default function SelfServiceScreen() {
                         <tr key={v.id} className="border-t border-border-grey">
                           <td className="px-5 py-3 text-charcoal whitespace-nowrap">{formatDate(v.planned_arrival, 'date-only')}</td>
                           <td className="px-5 py-3 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
+                          <td className="px-5 py-3 text-charcoal hidden sm:table-cell">{sitesMap[v.site_id]?.name ?? '—'}</td>
                           <td className="px-5 py-3 text-charcoal hidden sm:table-cell">{v.host.name}</td>
                           <td className="px-5 py-3">
                             {v.status === 'departed' && (
@@ -450,16 +528,21 @@ export default function SelfServiceScreen() {
               )}
             </div>
 
-            {/* H&S Induction status card */}
-            {site && (
-              <InductionStatusCard
-                site={site}
-                required={inductionRequired}
-                validRecord={inductionRecord}
-                latestRecord={latestInductionRecord}
-                onStartInduction={() => setActiveView('induction')}
-              />
-            )}
+            {/* H&S Induction status — one card per site with active/upcoming visits */}
+            {Object.entries(inductionStatusBySite).map(([siteId, status]) => {
+              const site = sitesMap[siteId]
+              if (!site) return null
+              return (
+                <InductionStatusCard
+                  key={siteId}
+                  site={site}
+                  required={status.required}
+                  validRecord={status.validRecord}
+                  latestRecord={status.latestRecord}
+                  onStartInduction={() => { setActiveSite(site); setActiveView('induction') }}
+                />
+              )
+            })}
 
             {/* Nav buttons */}
             <div className="grid grid-cols-2 gap-3">
@@ -489,13 +572,16 @@ export default function SelfServiceScreen() {
         {/* ── Sub-views: centred narrow column ── */}
         {activeView !== 'home' && (
           <div className="max-w-lg mx-auto space-y-4">
-            {activeView === 'induction' && site && (
+            {activeView === 'induction' && activeSite && (
               <div className="bg-white rounded-xl shadow-card p-5">
                 <div className="flex items-center justify-between mb-5">
-                  <h2 className="text-base font-semibold text-navy">H&S Induction</h2>
-                  <button onClick={() => setActiveView('home')} className="text-sm text-primark-blue hover:underline">← Back</button>
+                  <div>
+                    <h2 className="text-base font-semibold text-navy">H&S Induction</h2>
+                    <p className="text-xs text-mid-grey mt-0.5">{activeSite.name}</p>
+                  </div>
+                  <button onClick={() => { setActiveSite(null); setActiveView('home') }} className="text-sm text-primark-blue hover:underline">← Back</button>
                 </div>
-                <InductionViewer site={site} onComplete={handleInductionComplete} />
+                <InductionViewer site={activeSite} onComplete={handleInductionComplete} />
               </div>
             )}
 
@@ -573,7 +659,6 @@ function InductionStatusCard({
 }) {
   const VALIDITY_DAYS = 28
 
-  // Determine reason induction is required
   let reason: 'first_visit' | 'content_updated' | 'expired' | null = null
   if (required) {
     if (!latestRecord) {
@@ -585,7 +670,6 @@ function InductionStatusCard({
     }
   }
 
-  // Days remaining / days ago
   const daysSinceCompletion = validRecord
     ? Math.floor((Date.now() - new Date(validRecord.completed_at).getTime()) / 86_400_000)
     : latestRecord
@@ -606,7 +690,10 @@ function InductionStatusCard({
           <svg className="w-4 h-4 text-mid-grey" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
-          <h3 className="text-sm font-semibold text-navy">H&S Induction</h3>
+          <div>
+            <h3 className="text-sm font-semibold text-navy leading-none">H&S Induction</h3>
+            <p className="text-xs text-mid-grey mt-0.5">{site.name}</p>
+          </div>
         </div>
         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
           required ? 'bg-warning-bg text-warning' : 'bg-success-bg text-success'
