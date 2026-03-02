@@ -81,13 +81,10 @@ export default function AdminScreen() {
       if (!/^\d{4}$/.test(form.pin)) errs.pin = 'PIN must be exactly 4 digits'
       if (form.pin !== form.pinConfirm) errs.pinConfirm = 'PINs do not match'
     }
-
-    // Check username uniqueness
     if (form.username.trim() && form.username !== editTarget?.username) {
       const { data } = await supabase.from('members').select('id').eq('username', form.username.trim()).maybeSingle()
       if (data) errs.username = 'Username already taken'
     }
-
     setFormErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -97,7 +94,6 @@ export default function AdminScreen() {
     const valid = await validate()
     if (!valid) return
     setSaving(true)
-
     try {
       if (editTarget) {
         const updates: Partial<SafeUser & { pin_hash?: string; updated_at: string }> = {
@@ -107,7 +103,6 @@ export default function AdminScreen() {
           updated_at: new Date().toISOString(),
         }
         if (form.pin) updates.pin_hash = await hashPin(form.pin)
-
         await supabase.from('members').update(updates).eq('id', editTarget.id)
         await log('user_updated', 'user', editTarget.id, user.id, { role: form.role })
         toast.success('User updated')
@@ -168,17 +163,12 @@ export default function AdminScreen() {
         title="Admin"
         subtitle="Manage users and site settings"
         actions={
-          <div className="flex gap-3">
-            <a href="/site-config" className="border border-border-grey text-charcoal px-4 py-2 rounded-xl text-sm font-medium hover:bg-light-grey transition-colors">
-              Site Config
-            </a>
-            <button
-              onClick={openAdd}
-              className="bg-primark-blue text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-primark-blue-dark transition-colors min-h-btn"
-            >
-              + Add User
-            </button>
-          </div>
+          <button
+            onClick={openAdd}
+            className="bg-primark-blue text-white px-5 py-2.5 rounded-xl font-semibold text-sm hover:bg-primark-blue-dark transition-colors min-h-btn"
+          >
+            + Add User
+          </button>
         }
       />
 

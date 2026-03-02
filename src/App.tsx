@@ -23,6 +23,7 @@ import PreApprovalScreen from './screens/PreApprovalScreen'
 import DenyListScreen from './screens/DenyListScreen'
 import SiteConfigScreen from './screens/SiteConfigScreen'
 import EvacuationScreen from './screens/EvacuationScreen'
+import EvacuationHistoryScreen from './screens/EvacuationHistoryScreen'
 import AdminScreen from './screens/AdminScreen'
 import UpcomingVisitsScreen from './screens/UpcomingVisitsScreen'
 
@@ -106,6 +107,14 @@ function AppRoutes() {
           element={
             <RoleGuard minRole="site_admin">
               <EvacuationScreen />
+            </RoleGuard>
+          }
+        />
+        <Route
+          path="/evacuation-history"
+          element={
+            <RoleGuard minRole="site_admin">
+              <EvacuationHistoryScreen />
             </RoleGuard>
           }
         />
