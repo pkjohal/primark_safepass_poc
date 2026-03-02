@@ -3,15 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import PinPad from '../components/ui/PinPad'
-import type { SafeUser, Visitor } from '../lib/types'
+import type { SafeUser, Site, Visitor } from '../lib/types'
 
-type Step = 'select' | 'staff' | 'visitor'
+type Step = 'select' | 'location' | 'staff' | 'visitor'
 
 export default function LoginScreen() {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [step, setStep] = useState<Step>('select')
 
+  const [sites, setSites] = useState<Site[]>([])
+  const [selectedSiteId, setSelectedSiteId] = useState('')
   const [members, setMembers] = useState<SafeUser[]>([])
   const [visitors, setVisitors] = useState<Visitor[]>([])
 
@@ -23,13 +25,14 @@ export default function LoginScreen() {
 
   const [selectedVisitorToken, setSelectedVisitorToken] = useState('')
 
+  // Load sites and visitors on mount
   useEffect(() => {
     supabase
-      .from('members')
-      .select('id,name,username,email,site_id,role,is_active,created_at,updated_at')
+      .from('sites')
+      .select('*')
       .eq('is_active', true)
       .order('name')
-      .then(({ data }) => setMembers((data as SafeUser[]) ?? []))
+      .then(({ data }) => setSites((data as Site[]) ?? []))
 
     supabase
       .from('visitors')
@@ -38,6 +41,18 @@ export default function LoginScreen() {
       .order('name')
       .then(({ data }) => setVisitors((data as Visitor[]) ?? []))
   }, [])
+
+  // Load members filtered to the selected site
+  useEffect(() => {
+    if (!selectedSiteId) return
+    supabase
+      .from('members')
+      .select('id,name,username,email,site_id,role,is_active,created_at,updated_at')
+      .eq('is_active', true)
+      .eq('site_id', selectedSiteId)
+      .order('name')
+      .then(({ data }) => setMembers((data as SafeUser[]) ?? []))
+  }, [selectedSiteId])
 
   useEffect(() => {
     if (pinError) {
@@ -51,10 +66,26 @@ export default function LoginScreen() {
   }, [pinError])
 
   function handleBack() {
-    setStep('select')
+    if (step === 'staff') {
+      setStep('location')
+      setUsername('')
+      setError('')
+    } else {
+      setStep('select')
+      setSelectedSiteId('')
+      setSelectedVisitorToken('')
+      setError('')
+    }
+  }
+
+  function handleSiteChange(siteId: string) {
+    setSelectedSiteId(siteId)
     setUsername('')
-    setSelectedVisitorToken('')
     setError('')
+  }
+
+  function handleLocationContinue() {
+    if (selectedSiteId) setStep('staff')
   }
 
   async function handlePinComplete(pin: string) {
@@ -71,6 +102,8 @@ export default function LoginScreen() {
     }
   }
 
+  const selectedSite = sites.find((s) => s.id === selectedSiteId)
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-navy to-primark-blue flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -85,7 +118,7 @@ export default function LoginScreen() {
         {step === 'select' && (
           <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={() => setStep('staff')}
+              onClick={() => setStep('location')}
               className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center justify-center gap-3 hover:bg-primark-blue-light transition-colors group"
             >
               <div className="w-14 h-14 rounded-xl bg-navy flex items-center justify-center group-hover:bg-primark-blue transition-colors">
@@ -110,9 +143,9 @@ export default function LoginScreen() {
           </div>
         )}
 
-        {/* ── Step 2a: Staff login ── */}
-        {step === 'staff' && (
-          <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl p-8">
+        {/* ── Step 2: Location selection ── */}
+        {step === 'location' && (
+          <div className="bg-white rounded-2xl shadow-2xl p-8">
             <button
               onClick={handleBack}
               className="flex items-center gap-1.5 text-sm text-mid-grey hover:text-charcoal mb-6 transition-colors"
@@ -126,6 +159,56 @@ export default function LoginScreen() {
             <div className="flex items-center gap-3 mb-6">
               <div className="w-10 h-10 rounded-xl bg-navy flex items-center justify-center shrink-0">
                 <svg className="w-5 h-5 text-primark-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-navy leading-none">Select Location</h2>
+                <p className="text-xs text-mid-grey mt-0.5">Choose your store to continue</p>
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-xs font-medium text-mid-grey uppercase tracking-wide mb-1.5">Store</label>
+              <select
+                value={selectedSiteId}
+                onChange={(e) => handleSiteChange(e.target.value)}
+                className="w-full border-2 border-border-grey rounded-xl px-4 py-3 text-[15px] text-charcoal focus:outline-none focus:border-primark-blue focus:ring-2 focus:ring-primark-blue/20 bg-white"
+              >
+                <option value="" disabled>Select your store...</option>
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={handleLocationContinue}
+              disabled={!selectedSiteId}
+              className="w-full bg-primark-blue text-white py-3.5 rounded-xl font-semibold text-sm hover:bg-primark-blue-dark transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Continue →
+            </button>
+          </div>
+        )}
+
+        {/* ── Step 3: Staff login ── */}
+        {step === 'staff' && (
+          <div ref={cardRef} className="bg-white rounded-2xl shadow-2xl p-8">
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1.5 text-sm text-mid-grey hover:text-charcoal mb-6 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-xl bg-navy flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-primark-blue" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
@@ -134,6 +217,16 @@ export default function LoginScreen() {
                 <p className="text-xs text-mid-grey mt-0.5">Select your name and enter your PIN</p>
               </div>
             </div>
+
+            {selectedSite && (
+              <div className="flex items-center gap-1.5 mb-5 px-0.5">
+                <svg className="w-3.5 h-3.5 text-mid-grey shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <span className="text-xs text-mid-grey">{selectedSite.name}</span>
+              </div>
+            )}
 
             <div className="mb-5">
               <label className="block text-xs font-medium text-mid-grey uppercase tracking-wide mb-1.5">Name</label>
