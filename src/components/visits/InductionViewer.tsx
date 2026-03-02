@@ -8,6 +8,24 @@ interface Props {
   loading?: boolean
 }
 
+function toEmbedUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    // youtu.be/ID
+    if (u.hostname === 'youtu.be') {
+      return `https://www.youtube.com/embed${u.pathname}`
+    }
+    // youtube.com/watch?v=ID
+    if ((u.hostname === 'www.youtube.com' || u.hostname === 'youtube.com') && u.pathname === '/watch') {
+      const id = u.searchParams.get('v')
+      if (id) return `https://www.youtube.com/embed/${id}`
+    }
+  } catch {
+    // not a valid URL — fall through and return as-is
+  }
+  return url
+}
+
 export default function InductionViewer({ site, onComplete, loading = false }: Props) {
   const [confirmed, setConfirmed] = useState(false)
 
@@ -17,7 +35,7 @@ export default function InductionViewer({ site, onComplete, loading = false }: P
       {site.hs_video_url && (
         <div className="rounded-xl overflow-hidden bg-black aspect-video">
           <iframe
-            src={site.hs_video_url}
+            src={toEmbedUrl(site.hs_video_url)}
             className="w-full h-full"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
