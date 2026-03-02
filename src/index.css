@@ -17,22 +17,67 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  .print-only {
+    display: none !important;
+  }
+
   /* Print styles for evacuation list */
   @media print {
+    @page {
+      size: A4 portrait;
+      margin: 1.5cm 1.5cm 2cm;
+    }
+
     .no-print {
       display: none !important;
     }
+
+    /* block-level print-only elements */
     .print-only {
       display: block !important;
     }
+
+    /* table cell print-only elements */
+    td.print-only,
+    th.print-only {
+      display: table-cell !important;
+    }
+
     body {
       background: white;
       color: black;
+      font-size: 11pt;
     }
-  }
 
-  .print-only {
-    display: none;
+    /* Evacuation register table */
+    .evacuation-register {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    .evacuation-register th,
+    .evacuation-register td {
+      border: 1px solid #999;
+      padding: 6px 10px;
+    }
+
+    .evacuation-register thead th {
+      background: #1a1a2e !important;
+      color: white !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .evacuation-register tbody tr:nth-child(even) td {
+      background: #f5f5f5 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .evacuation-register tbody tr td span {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
   }
 }
 
