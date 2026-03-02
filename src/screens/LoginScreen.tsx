@@ -237,7 +237,7 @@ export default function LoginScreen() {
               >
                 <option value="" disabled>Select your name...</option>
                 {members.map((m) => (
-                  <option key={m.id} value={m.username}>{m.name}</option>
+                  <option key={m.id} value={m.username}>{m.name} — {m.role === 'site_admin' ? 'Site Admin' : m.role === 'reception' ? 'Reception' : 'Host'}</option>
                 ))}
               </select>
             </div>
