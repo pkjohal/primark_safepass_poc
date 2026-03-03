@@ -73,7 +73,8 @@ export function useVisits() {
       .select(`
         *,
         visitor:visitors(*),
-        host:members!visits_host_user_id_fkey(id,name,username,email,site_id,role,is_active,created_at,updated_at)
+        host:members!visits_host_user_id_fkey(id,name,username,email,site_id,role,is_active,created_at,updated_at),
+        site:sites(id,name)
       `)
       .eq('visitor_id', visitorId)
       .order('planned_arrival', { ascending: false })
