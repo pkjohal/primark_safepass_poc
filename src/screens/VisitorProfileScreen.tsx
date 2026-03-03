@@ -175,6 +175,7 @@ export default function VisitorProfileScreen() {
                   <thead>
                     <tr className="text-left">
                       <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Date</th>
+                      <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Site</th>
                       <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Purpose</th>
                       <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Host</th>
                       <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
@@ -190,6 +191,7 @@ export default function VisitorProfileScreen() {
                         <td className="py-3 pr-4 text-charcoal whitespace-nowrap">
                           {formatDate(v.planned_arrival, 'date-only')}
                         </td>
+                        <td className="py-3 pr-4 text-charcoal whitespace-nowrap">{v.site?.name ?? '—'}</td>
                         <td className="py-3 pr-4 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
                         <td className="py-3 pr-4 text-charcoal">{v.host.name}</td>
                         <td className="py-3 pr-4">

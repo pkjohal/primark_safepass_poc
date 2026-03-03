@@ -8,7 +8,7 @@ import { useAuditLog } from '../hooks/useAuditLog'
 import { useInduction } from '../hooks/useInduction'
 import { useAuth } from '../context/AuthContext'
 import PageHeader from '../components/layout/PageHeader'
-import DateTimePicker from '../components/ui/DateTimePicker'
+import TimePicker from '../components/ui/TimePicker'
 import type { Visitor, SafeUser, Site } from '../lib/types'
 import toast from 'react-hot-toast'
 
@@ -36,15 +36,21 @@ export default function ScheduleVisitScreen() {
   const [allUsers, setAllUsers] = useState<SafeUser[]>([])
   const [hostContactId, setHostContactId] = useState<string>(user?.id ?? '')
   const [backupContactId, setBackupContactId] = useState<string>('')
-  const toLocalDateTimeValue = (d: Date) => {
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  }
-  const walkInNow = isWalkIn ? toLocalDateTimeValue(new Date()) : ''
-  const walkInDeparture = isWalkIn ? toLocalDateTimeValue(new Date(Date.now() + 60 * 60 * 1000)) : ''
 
-  const [plannedArrival, setPlannedArrival] = useState(walkInNow)
-  const [plannedDeparture, setPlannedDeparture] = useState(walkInDeparture)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const roundUpTo5Min = (d: Date) => {
+    const m = Math.ceil(d.getMinutes() / 5) * 5
+    if (m >= 60) return `${pad(d.getHours() + 1)}:00`
+    return `${pad(d.getHours())}:${pad(m)}`
+  }
+  const now = new Date()
+  const initialDate = isWalkIn ? `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` : ''
+  const initialArrival = isWalkIn ? roundUpTo5Min(now) : ''
+  const initialDeparture = isWalkIn ? roundUpTo5Min(new Date(now.getTime() + 60 * 60 * 1000)) : ''
+
+  const [visitDate, setVisitDate] = useState(initialDate)
+  const [arrivalTime, setArrivalTime] = useState(initialArrival)
+  const [departureTime, setDepartureTime] = useState(initialDeparture)
   const [purpose, setPurpose] = useState('')
   const [documents, setDocuments] = useState<DocumentDraft[]>([])
   const [showDocForm, setShowDocForm] = useState(false)
@@ -112,9 +118,10 @@ export default function ScheduleVisitScreen() {
   function validate(): boolean {
     const errs: Record<string, string> = {}
     if (!selectedVisitor) errs.visitor = 'Select a visitor'
-    if (!plannedArrival) errs.arrival = 'Select a planned arrival time'
-    if (!plannedDeparture) errs.departure = 'Select an expected departure time'
-    if (plannedArrival && plannedDeparture && plannedDeparture <= plannedArrival) {
+    if (!visitDate) errs.date = 'Select a visit date'
+    if (!arrivalTime) errs.arrival = 'Select an arrival time'
+    if (!departureTime) errs.departure = 'Select a departure time'
+    if (arrivalTime && departureTime && departureTime <= arrivalTime) {
       errs.departure = 'Departure must be after arrival'
     }
     if (!purpose.trim()) errs.purpose = 'Purpose is required'
@@ -134,8 +141,8 @@ export default function ScheduleVisitScreen() {
         site_id: selectedSite.id,
         host_user_id: hostId,
         purpose: purpose.trim(),
-        planned_arrival: new Date(plannedArrival).toISOString(),
-        planned_departure: new Date(plannedDeparture).toISOString(),
+        planned_arrival: new Date(`${visitDate}T${arrivalTime}`).toISOString(),
+        planned_departure: new Date(`${visitDate}T${departureTime}`).toISOString(),
         is_walk_in: isWalkIn,
       })
 
@@ -188,7 +195,8 @@ export default function ScheduleVisitScreen() {
     }
   }
 
-  const now = new Date().toISOString().slice(0, 16)
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const nowTimeStr = new Date().toTimeString().slice(0, 5)
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -266,20 +274,37 @@ export default function ScheduleVisitScreen() {
             )}
           </div>
 
+          <div>
+            <label className="block text-xs font-medium text-mid-grey uppercase tracking-wide mb-1.5">
+              Visit Date <span className="text-danger">*</span>
+            </label>
+            <input
+              type="date"
+              value={visitDate}
+              onChange={(e) => { setVisitDate(e.target.value); setArrivalTime(''); setDepartureTime(''); setErrors((p) => ({ ...p, date: '' })) }}
+              min={isWalkIn ? undefined : todayStr}
+              required
+              className={`w-full px-3 py-2.5 border rounded-lg text-sm text-charcoal bg-white min-h-input focus:outline-none focus:ring-2 focus:ring-primark-blue ${errors.date ? 'border-danger' : 'border-border-grey'}`}
+            />
+            {errors.date && <p className="text-xs text-danger mt-1">{errors.date}</p>}
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
-            <DateTimePicker
-              label="Planned Arrival"
-              value={plannedArrival}
-              onChange={setPlannedArrival}
-              min={isWalkIn ? undefined : now}
+            <TimePicker
+              label="Arrival Time"
+              value={arrivalTime}
+              onChange={(v) => { setArrivalTime(v); setDepartureTime(''); setErrors((p) => ({ ...p, arrival: '' })) }}
+              min={visitDate === todayStr ? nowTimeStr : undefined}
+              disabled={!visitDate}
               required
               error={errors.arrival}
             />
-            <DateTimePicker
-              label="Expected Departure"
-              value={plannedDeparture}
-              onChange={setPlannedDeparture}
-              min={plannedArrival || now}
+            <TimePicker
+              label="Departure Time"
+              value={departureTime}
+              onChange={(v) => { setDepartureTime(v); setErrors((p) => ({ ...p, departure: '' })) }}
+              min={arrivalTime || undefined}
+              disabled={!visitDate || !arrivalTime}
               required
               error={errors.departure}
             />

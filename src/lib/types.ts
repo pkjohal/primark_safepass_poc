@@ -186,4 +186,6 @@ export interface AuditLogEntry {
 export interface VisitWithVisitor extends Visit {
   visitor: Visitor
   host: SafeUser
+  site: Pick<Site, 'id' | 'name'>
+  visit_documents?: { id: string }[]
 }

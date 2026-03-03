@@ -11,8 +11,6 @@ interface Props {
 
 export default function VisitorRow({ visit, onClick, onCheckIn }: Props) {
   const displayStatus = getDisplayStatus(visit)
-  const hasDocuments = visit.documents_accepted !== undefined
-
   return (
     <tr
       className={`border-b border-border-grey transition-colors ${onClick ? 'cursor-pointer hover:bg-primark-blue-light' : ''}`}
@@ -49,13 +47,16 @@ export default function VisitorRow({ visit, onClick, onCheckIn }: Props) {
           }`}>
             {visit.induction_completed ? '✓' : '✗'} H&S
           </span>
-          {hasDocuments && (
-            <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full w-fit ${
-              visit.documents_accepted ? 'bg-success-bg text-success' : 'bg-warning-bg text-warning'
-            }`}>
-              {visit.documents_accepted ? '✓' : '✗'} Docs
-            </span>
-          )}
+          {(() => {
+            const docsPending = !visit.documents_accepted && (visit.visit_documents?.length ?? 0) > 0
+            return (
+              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full w-fit ${
+                docsPending ? 'bg-warning-bg text-warning' : 'bg-success-bg text-success'
+              }`}>
+                {docsPending ? '✗' : '✓'} Docs
+              </span>
+            )
+          })()}
         </div>
       </td>
       <td className="py-3 px-4">

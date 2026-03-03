@@ -44,8 +44,8 @@ export default function HomeScreen() {
     )
   })
 
-  const unescortedVisits = checkedInVisits.filter((v) => v.access_status === 'unescorted')
-  const escortedVisits = checkedInVisits.filter((v) => v.access_status === 'escorted')
+  const unescortedVisits = checkedInVisits.filter((v) => v.access_status === 'unescorted' && getDisplayStatus(v) !== 'overdue')
+  const escortedVisits = checkedInVisits.filter((v) => v.access_status === 'escorted' && getDisplayStatus(v) !== 'overdue')
 
   async function handleMarkEscorted(v: VisitWithVisitor) {
     await updateVisit(v.id, { access_status: 'escorted' })
@@ -309,14 +309,25 @@ function StatusSection({
               className={`p-2.5 rounded-lg bg-light-grey ${onAction ? 'cursor-pointer hover:bg-border-grey transition-colors' : ''}`}
               onClick={() => onAction?.(v)}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold text-navy">{v.visitor.name}</div>
                   <div className="text-xs text-mid-grey">
                     {v.visitor.company} · Since {formatDate(v.actual_arrival, 'time-only')}
                   </div>
                 </div>
-                <div className="text-xs text-mid-grey">{v.host.name}</div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {(v.access_status === 'escorted' || v.access_status === 'unescorted') && (
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                      v.access_status === 'escorted'
+                        ? 'bg-primark-blue-light text-primark-blue'
+                        : 'bg-light-grey text-charcoal'
+                    }`}>
+                      {v.access_status === 'escorted' ? 'Escorted' : 'Unescorted'}
+                    </span>
+                  )}
+                  <span className="text-xs text-mid-grey">{v.host.name}</span>
+                </div>
               </div>
               {secondaryAction && (
                 <button

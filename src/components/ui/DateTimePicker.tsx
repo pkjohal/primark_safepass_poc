@@ -24,11 +24,24 @@ export default function DateTimePicker({ label, value, onChange, min, required, 
   }
 
   function handleDateChange(d: string) {
-    emit(d, hourPart || '09', minPart || '00')
+    const newIsMinDate = d === minDate
+    // Keep existing hour if still valid, else fall back to minHour (today) or '09' (future)
+    const nextHour = hourPart && (!newIsMinDate || hourPart >= minHour)
+      ? hourPart
+      : (newIsMinDate ? minHour : '09')
+    // On today at the current hour, snap minutes to first valid 5-min slot >= minMin
+    const nextMin = newIsMinDate && nextHour === minHour
+      ? (MINUTES.find((m) => m >= minMin) ?? '00')
+      : (minPart || '00')
+    emit(d, nextHour, nextMin)
   }
 
   function handleHourChange(h: string) {
-    emit(datePart || new Date().toISOString().slice(0, 10), h, minPart || '00')
+    const d = datePart || new Date().toISOString().slice(0, 10)
+    // If switching to the current hour on today, snap minutes forward if needed
+    const needsSnap = d === minDate && h === minHour && minPart < minMin
+    const nextMin = needsSnap ? (MINUTES.find((m) => m >= minMin) ?? '00') : (minPart || '00')
+    emit(d, h, nextMin)
   }
 
   function handleMinChange(m: string) {
