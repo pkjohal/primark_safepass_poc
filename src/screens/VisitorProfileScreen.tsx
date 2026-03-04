@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AlertTriangle } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import { useVisitors } from '../hooks/useVisitors'
 import { useVisits } from '../hooks/useVisits'
 import { usePreApprovals } from '../hooks/usePreApprovals'
+import { useNotifications } from '../hooks/useNotifications'
 import { useDenyList } from '../hooks/useDenyList'
 import { useAuditLog } from '../hooks/useAuditLog'
 import { useAuth } from '../context/AuthContext'
@@ -20,17 +22,22 @@ export default function VisitorProfileScreen() {
   const { user, site, isSiteAdmin, isHost, isReception } = useAuth()
   const { getById, updateVisitor } = useVisitors()
   const { getVisitsForVisitor } = useVisits()
-  const { getForVisitorSite } = usePreApprovals()
+  const { getForVisitorSite, request } = usePreApprovals()
+  const { sendNotification } = useNotifications()
   const { checkDenyList } = useDenyList()
   const { log } = useAuditLog()
 
   const [visitor, setVisitor] = useState<Visitor | null>(null)
   const [visits, setVisits] = useState<VisitWithVisitor[]>([])
   const [preApproval, setPreApproval] = useState<PreApproval | null>(null)
+  const [latestPreApproval, setLatestPreApproval] = useState<PreApproval | null>(null)
   const [denyEntry, setDenyEntry] = useState<DenyListEntry | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAnonConfirm, setShowAnonConfirm] = useState(false)
   const [anonLoading, setAnonLoading] = useState(false)
+  const [showRequestForm, setShowRequestForm] = useState(false)
+  const [requestJustification, setRequestJustification] = useState('')
+  const [requesting, setRequesting] = useState(false)
 
   useEffect(() => {
     if (!id || !site) return
@@ -38,10 +45,19 @@ export default function VisitorProfileScreen() {
       getById(id),
       getVisitsForVisitor(id),
       getForVisitorSite(id, site.id),
-    ]).then(async ([v, vs, pa]) => {
+      supabase
+        .from('pre_approvals')
+        .select('*')
+        .eq('visitor_id', id)
+        .eq('site_id', site.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]).then(async ([v, vs, pa, { data: latest }]) => {
       setVisitor(v)
       setVisits(vs)
       setPreApproval(pa)
+      setLatestPreApproval(latest as PreApproval ?? null)
       if (v) {
         const deny = await checkDenyList(v, site.id)
         setDenyEntry(deny)
@@ -49,6 +65,40 @@ export default function VisitorProfileScreen() {
       setLoading(false)
     })
   }, [id, site, getById, getVisitsForVisitor, getForVisitorSite, checkDenyList])
+
+  async function handleRequestPreApproval() {
+    if (!visitor || !user || !site) return
+    setRequesting(true)
+    try {
+      await request({ visitor_id: visitor.id, site_id: site.id, requested_by: user.id, reason: requestJustification })
+      const { data: admins } = await supabase
+        .from('members')
+        .select('id')
+        .eq('site_id', site.id)
+        .eq('role', 'site_admin')
+        .eq('is_active', true)
+      if (admins) {
+        await Promise.all(admins.map((a: { id: string }) =>
+          sendNotification({
+            recipient_type: 'user',
+            recipient_user_id: a.id,
+            notification_type: 'pre_approval_request',
+            title: `Pre-approval request: ${visitor.name}`,
+            body: `${user.name} has requested unescorted access for ${visitor.name}. Justification: ${requestJustification || 'None provided'}`,
+          })
+        ))
+      }
+      await log('pre_approval_requested', 'pre_approval', null, user.id, { visitor_id: visitor.id })
+      toast.success('Pre-approval request submitted')
+      setShowRequestForm(false)
+      setRequestJustification('')
+      setLatestPreApproval({ status: 'pending' } as PreApproval)
+    } catch {
+      toast.error('Failed to submit request')
+    } finally {
+      setRequesting(false)
+    }
+  }
 
   async function handleAnonymise() {
     if (!visitor || !user) return
@@ -86,6 +136,12 @@ export default function VisitorProfileScreen() {
   if (!visitor) {
     return <div className="p-6 text-center text-mid-grey">Visitor not found</div>
   }
+
+  const canRequestPreApproval =
+    visitor.visitor_type === 'third_party' &&
+    !isSiteAdmin &&
+    !visitor.is_anonymised &&
+    (!latestPreApproval || ['rejected', 'revoked', 'expired'].includes(latestPreApproval.status))
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -128,81 +184,124 @@ export default function VisitorProfileScreen() {
       <div className="space-y-6">
         {/* Profile details */}
         <div className="bg-white rounded-xl shadow-card p-5">
-            <h2 className="text-base font-semibold text-navy mb-4">Profile Details</h2>
-            <dl className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              <ProfileField label="Name" value={visitor.name} />
-              <ProfileField label="Email" value={visitor.email} />
-              <ProfileField label="Phone" value={visitor.phone ?? '—'} />
-              <ProfileField label="Company" value={visitor.company ?? '—'} />
-              <div>
-                <dt className="text-xs font-medium text-mid-grey uppercase tracking-wide mb-0.5">Type</dt>
-                <dd>
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                    visitor.visitor_type === 'internal_staff'
-                      ? 'bg-primark-blue-light text-primark-blue'
-                      : 'bg-light-grey text-mid-grey'
-                  }`}>
-                    {visitor.visitor_type === 'internal_staff' ? 'Internal Staff' : 'Third Party'}
-                  </span>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-mid-grey uppercase tracking-wide mb-0.5">Pre-Approval</dt>
-                <dd>
-                  {preApproval ? (
-                    <div>
-                      <StatusPill status={preApproval.status} />
-                      {preApproval.expires_at && (
-                        <p className="text-xs text-mid-grey mt-1">Expires {formatDate(preApproval.expires_at, 'date-only')}</p>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-sm text-mid-grey">None</span>
-                  )}
-                </dd>
-              </div>
-            </dl>
+          <h2 className="text-base font-semibold text-navy mb-4">Profile Details</h2>
+          <dl className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <ProfileField label="Name" value={visitor.name} />
+            <ProfileField label="Email" value={visitor.email} />
+            <ProfileField label="Phone" value={visitor.phone ?? '—'} />
+            <ProfileField label="Company" value={visitor.company ?? '—'} />
+            <div>
+              <dt className="text-xs font-medium text-mid-grey uppercase tracking-wide mb-0.5">Type</dt>
+              <dd>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                  visitor.visitor_type === 'internal_staff'
+                    ? 'bg-primark-blue-light text-primark-blue'
+                    : 'bg-light-grey text-mid-grey'
+                }`}>
+                  {visitor.visitor_type === 'internal_staff' ? 'Internal Staff' : 'Third Party'}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-mid-grey uppercase tracking-wide mb-0.5">Pre-Approval</dt>
+              <dd>
+                {latestPreApproval ? (
+                  <div>
+                    <StatusPill status={latestPreApproval.status} />
+                    {preApproval?.expires_at && (
+                      <p className="text-xs text-mid-grey mt-1">Expires {formatDate(preApproval.expires_at, 'date-only')}</p>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-sm text-mid-grey">None</span>
+                )}
+                {canRequestPreApproval && !showRequestForm && (
+                  <button
+                    onClick={() => setShowRequestForm(true)}
+                    className="mt-1.5 text-xs text-primark-blue hover:underline block"
+                  >
+                    Request pre-approval
+                  </button>
+                )}
+              </dd>
+            </div>
+          </dl>
         </div>
+
+        {/* Pre-approval request form */}
+        {showRequestForm && (
+          <div className="bg-white rounded-xl shadow-card p-5">
+            <h2 className="text-base font-semibold text-navy mb-4">Request Pre-Approval</h2>
+            <p className="text-sm text-charcoal mb-4">
+              Request unescorted access for <strong>{visitor.name}</strong> at {site?.name}. A site admin will be notified to review the request.
+            </p>
+            <div className="mb-4">
+              <label className="block text-xs font-medium text-mid-grey uppercase tracking-wide mb-1.5">Justification (optional)</label>
+              <textarea
+                value={requestJustification}
+                onChange={(e) => setRequestJustification(e.target.value)}
+                rows={3}
+                placeholder="Why does this visitor need unescorted access?"
+                className="w-full px-3 py-2.5 border border-border-grey rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primark-blue"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowRequestForm(false); setRequestJustification('') }}
+                className="flex-1 py-2.5 border border-border-grey rounded-xl text-sm text-charcoal"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRequestPreApproval}
+                disabled={requesting}
+                className="flex-1 py-2.5 bg-primark-blue text-white rounded-xl text-sm font-semibold disabled:opacity-50"
+              >
+                {requesting ? 'Submitting...' : 'Submit Request'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Visit history */}
         <div className="bg-white rounded-xl shadow-card p-5">
-            <h2 className="text-base font-semibold text-navy mb-4">Visit History ({visits.length})</h2>
-            {visits.length === 0 ? (
-              <p className="text-sm text-mid-grey">No visits on record.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left">
-                      <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Date</th>
-                      <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Site</th>
-                      <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Purpose</th>
-                      <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Host</th>
-                      <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
+          <h2 className="text-base font-semibold text-navy mb-4">Visit History ({visits.length})</h2>
+          {visits.length === 0 ? (
+            <p className="text-sm text-mid-grey">No visits on record.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left">
+                    <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Date</th>
+                    <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Site</th>
+                    <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Purpose</th>
+                    <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Host</th>
+                    <th className="py-2 pr-4 text-xs font-medium text-mid-grey uppercase tracking-wide">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visits.map((v) => (
+                    <tr
+                      key={v.id}
+                      className="border-t border-border-grey cursor-pointer hover:bg-light-grey"
+                      onClick={() => isReception ? navigate(`/checkin/${v.id}`) : undefined}
+                    >
+                      <td className="py-3 pr-4 text-charcoal whitespace-nowrap">
+                        {formatDate(v.planned_arrival, 'date-only')}
+                      </td>
+                      <td className="py-3 pr-4 text-charcoal whitespace-nowrap">{v.site?.name ?? '—'}</td>
+                      <td className="py-3 pr-4 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
+                      <td className="py-3 pr-4 text-charcoal">{v.host.name}</td>
+                      <td className="py-3 pr-4">
+                        <StatusPill status={getDisplayStatus(v) === 'checked_in' && v.access_status === 'awaiting_escort' ? 'awaiting_escort' : getDisplayStatus(v)} />
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {visits.map((v) => (
-                      <tr
-                        key={v.id}
-                        className="border-t border-border-grey cursor-pointer hover:bg-light-grey"
-                        onClick={() => isReception ? navigate(`/checkin/${v.id}`) : undefined}
-                      >
-                        <td className="py-3 pr-4 text-charcoal whitespace-nowrap">
-                          {formatDate(v.planned_arrival, 'date-only')}
-                        </td>
-                        <td className="py-3 pr-4 text-charcoal whitespace-nowrap">{v.site?.name ?? '—'}</td>
-                        <td className="py-3 pr-4 text-charcoal max-w-[160px] truncate">{v.purpose}</td>
-                        <td className="py-3 pr-4 text-charcoal">{v.host.name}</td>
-                        <td className="py-3 pr-4">
-                          <StatusPill status={getDisplayStatus(v) === 'checked_in' && v.access_status === 'awaiting_escort' ? 'awaiting_escort' : getDisplayStatus(v)} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 

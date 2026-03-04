@@ -46,7 +46,7 @@ const navSections: NavSection[] = [
       {
         to: '/pre-approvals',
         label: 'Pre-Approvals',
-        minRole: 'reception',
+        minRole: 'site_admin',
         icon: <ClipboardCheck className="w-[18px] h-[18px]" />,
       },
     ],
