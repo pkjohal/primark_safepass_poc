@@ -26,6 +26,7 @@ import EvacuationScreen from './screens/EvacuationScreen'
 import EvacuationHistoryScreen from './screens/EvacuationHistoryScreen'
 import AdminScreen from './screens/AdminScreen'
 import UpcomingVisitsScreen from './screens/UpcomingVisitsScreen'
+import PastVisitsScreen from './screens/PastVisitsScreen'
 
 function ProtectedLayout() {
   const { user, activeEvacuation } = useAuth()
@@ -75,6 +76,7 @@ function AppRoutes() {
         <Route path="/visitors/new" element={<VisitorFormScreen />} />
         <Route path="/visitors/:id" element={<VisitorProfileScreen />} />
         <Route path="/upcoming" element={<UpcomingVisitsScreen />} />
+        <Route path="/past-visits" element={<PastVisitsScreen />} />
         <Route path="/schedule" element={<ScheduleVisitScreen />} />
         <Route
           path="/checkin/:visitId"

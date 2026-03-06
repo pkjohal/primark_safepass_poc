@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Calendar, CalendarPlus, ClipboardCheck,
-  Users, ShieldOff, Settings, SlidersHorizontal, ShieldAlert,
+  Users, ShieldOff, Settings, SlidersHorizontal, ShieldAlert, History,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { hasMinRole } from '../../lib/permissions'
@@ -48,6 +48,11 @@ const navSections: NavSection[] = [
         label: 'Pre-Approvals',
         minRole: 'site_admin',
         icon: <ClipboardCheck className="w-[18px] h-[18px]" />,
+      },
+      {
+        to: '/past-visits',
+        label: 'Visit History',
+        icon: <History className="w-[18px] h-[18px]" />,
       },
     ],
   },

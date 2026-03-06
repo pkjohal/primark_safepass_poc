@@ -11,9 +11,13 @@ export function useNotifications(userId?: string, visitorId?: string) {
     if (!userId && !visitorId) return
     setLoading(true)
 
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+
     let query = supabase
       .from('messages')
       .select('*')
+      .gte('created_at', startOfToday.toISOString())
       .order('created_at', { ascending: false })
       .limit(100)
 
