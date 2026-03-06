@@ -64,13 +64,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user) return
 
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+
+    const fetchUnreadCount = () =>
+      supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_user_id', user.id)
+        .eq('is_read', false)
+        .gte('created_at', todayStart.toISOString())
+        .then(({ count }) => setUnreadNotificationCount(count ?? 0))
+
     // Fetch initial unread count
-    supabase
-      .from('messages')
-      .select('id', { count: 'exact', head: true })
-      .eq('recipient_user_id', user.id)
-      .eq('is_read', false)
-      .then(({ count }) => setUnreadNotificationCount(count ?? 0))
+    fetchUnreadCount()
 
     const channel = supabase
       .channel(`notifications:user:${user.id}`)
@@ -84,12 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         },
         () => {
           // Re-fetch unread count on any change
-          supabase
-            .from('messages')
-            .select('id', { count: 'exact', head: true })
-            .eq('recipient_user_id', user.id)
-            .eq('is_read', false)
-            .then(({ count }) => setUnreadNotificationCount(count ?? 0))
+          fetchUnreadCount()
         }
       )
       .subscribe()
