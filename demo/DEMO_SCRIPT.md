@@ -247,6 +247,8 @@ Run `npm run seed` before the demo starts. This creates all the records below. T
 
 **Highlight:** The "approved" pre-approval badge on the profile, and the contrast with the deny list check from Scene 4 — the system applies the right rule automatically.
 
+> **Visit History (`/past-visits`):** If time allows, navigate to Visit History from the sidebar. Use the day arrows to step back to yesterday and show the full list of visits for that date — visitor name, company, host, purpose, and final status. Point out the date picker for jumping to any historical day. This page gives reception and site admins a complete day-by-day record of everyone who has visited the site, without needing to search by individual visitor.
+
 ---
 
 ### Scene 7 — Site Configuration and H&S Publishing

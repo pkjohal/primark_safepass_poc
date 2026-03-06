@@ -19,6 +19,7 @@ interface AuthContextValue {
   isSiteAdmin: boolean
   login: (username: string, pin: string) => Promise<boolean>
   logout: () => void
+  refreshSite: () => Promise<void>
   unreadNotificationCount: number
   activeEvacuation: EvacuationEvent | null
   setActiveEvacuation: (event: EvacuationEvent | null) => void
@@ -167,6 +168,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true
   }, [])
 
+  const refreshSite = useCallback(async () => {
+    if (!site) return
+    const { data } = await supabase.from('sites').select('*').eq('id', site.id).single()
+    if (data) setSite(data as Site)
+  }, [site])
+
   const isHost = user ? hasMinRole(user.role, 'host') : false
   const isReception = user ? hasMinRole(user.role, 'reception') : false
   const isSiteAdmin = user ? hasMinRole(user.role, 'site_admin') : false
@@ -181,6 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isSiteAdmin,
         login,
         logout,
+        refreshSite,
         unreadNotificationCount,
         activeEvacuation,
         setActiveEvacuation,

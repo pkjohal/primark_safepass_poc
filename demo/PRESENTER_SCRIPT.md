@@ -54,6 +54,8 @@ If Mary had ignored it, the system wouldn't just wait. After ten minutes it esca
 
 ## Scene 6 — Pre-Approvals and Visitor Profile
 
+If you ever need to look back at a previous day's activity, the Visit History page lets you browse all site visits by date. Use the arrows to step through days or pick a specific date from the calendar — every visit, its status, host, and purpose is there in one place.
+
 Now let's look at the tools available to Pat Kelly, our site admin, starting with pre-approvals.
 
 Pre-approvals are how we manage third-party contractors who visit regularly, for example IT support, maintenance engineers, service engineers.
