@@ -9,7 +9,7 @@ import ConfirmDialog from '../components/ui/ConfirmDialog'
 import toast from 'react-hot-toast'
 
 export default function SiteConfigScreen() {
-  const { user, site } = useAuth()
+  const { user, site, refreshSite } = useAuth()
   const { log } = useAuditLog()
 
   const [videoUrl, setVideoUrl] = useState(site?.hs_video_url ?? '')
@@ -48,6 +48,7 @@ export default function SiteConfigScreen() {
         new_version: newVersion,
         old_version: site.hs_content_version,
       })
+      await refreshSite()
       toast.success(`H&S content published (v${newVersion}) — all visitors must re-complete induction`)
       setShowPublishConfirm(false)
     } catch {
@@ -73,6 +74,7 @@ export default function SiteConfigScreen() {
         notification_escalation_minutes: escalationMinutes,
         pre_approval_default_days: preApprovalDays,
       })
+      await refreshSite()
       toast.success('Settings saved')
     } catch {
       toast.error('Failed to save settings')
